@@ -25,6 +25,8 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 
+#include <ndp.h>
+
 #include "nm-default.h"
 #include "nm-setting-ip6-config.h"
 #include "NetworkManagerUtils.h"
@@ -89,6 +91,25 @@ typedef struct {
 	guint32 lifetime;
 } NMRDiscDNSDomain;
 
+typedef struct {
+
+	enum ndp_pvdid_type pvd_type;
+	int pvd_len;
+
+	union {
+		char uuid[36];
+	};
+
+	NMRDiscDHCPLevel dhcp_level;
+	GArray *gateways;
+	GArray *addresses;
+	GArray *routes;
+	GArray *dns_servers;
+	GArray *dns_domains;
+	int hop_limit;
+	guint32 mtu;
+} NMRDiscPVD;
+
 typedef enum {
 	NM_RDISC_CONFIG_DHCP_LEVEL                          = 1 << 0,
 	NM_RDISC_CONFIG_GATEWAYS                            = 1 << 1,
@@ -131,6 +152,9 @@ typedef struct {
 	GArray *dns_domains;
 	int hop_limit;
 	guint32 mtu;
+
+	// Hash of NMRDisc structures
+	GHashTable *pvds;
 } NMRDisc;
 
 typedef struct {

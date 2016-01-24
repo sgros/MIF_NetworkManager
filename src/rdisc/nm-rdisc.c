@@ -669,6 +669,207 @@ dns_domain_free (gpointer data)
 	g_free (((NMRDiscDNSDomain *)(data))->domain);
 }
 
+/*
+ * This function accepts pointer to NMRDisc structure,
+ * hashes parameters that identify unique PvD and return
+ * the hash.
+ */
+static guint
+pvd_hash_func(gconstpointer key)
+{
+	NMRDiscPVD *pvd = (NMRDiscPVD *)key;
+
+	guint hash = 0;
+	int i, j;
+
+	// Iterate over all gateway server array (each element of the array
+	// is of NMRDiscGateway type) and add it to the hash value
+	for (i = 0; i < pvd->gateways->len; i++) {
+		NMRDiscGateway *item = &g_array_index (pvd->gateways, NMRDiscGateway, i);
+
+		for (j = 0; j < sizeof(struct in6_addr); j++) {
+			hash ^= (guint)(((char *)item)[j]);
+			hash += (guint)(((char *)item)[j]);
+			hash = (hash << 8) | (hash >> 24);
+		}
+	}
+
+	// Iterate over all addresses array (each element of the array
+	// is of NMRDiscAddress type) and add it to the hash value
+	for (i = 0; i < pvd->addresses->len; i++) {
+		NMRDiscAddress *item = &g_array_index (pvd->addresses, NMRDiscAddress, i);
+
+		for (j = 0; j < sizeof(struct in6_addr); j++) {
+			hash ^= (guint)(((char *)item)[j]);
+			hash += (guint)(((char *)item)[j]);
+			hash = (hash << 8) | (hash >> 24);
+		}
+	}
+
+	// Iterate over all routes array (each element of the array
+	// is of NMRDiscRoute type) and add it to the hash value
+	for (i = 0; i < pvd->routes->len; i++) {
+		NMRDiscRoute *item = &g_array_index (pvd->routes, NMRDiscRoute, i);
+
+		for (j = 0; j < sizeof(struct in6_addr) + sizeof(int); j++) {
+			hash ^= (guint)(((char *)item)[j]);
+			hash += (guint)(((char *)item)[j]);
+			hash = (hash << 8) | (hash >> 24);
+		}
+	}
+
+	// Iterate over all DNS servers array (each element of the array
+	// is of NMRDiscDNSServer type) and add it to the hash value
+	for (i = 0; i < pvd->dns_servers->len; i++) {
+		NMRDiscDNSServer *item = &g_array_index (pvd->dns_servers, NMRDiscDNSServer, i);
+
+		for (j = 0; j < sizeof(struct in6_addr); j++) {
+			hash ^= (guint)(((char *)item)[j]);
+			hash += (guint)(((char *)item)[j]);
+			hash = (hash << 8) | (hash >> 24);
+		}
+	}
+
+	// Iterate over all DNS domains array (each element of the array
+	// is of NMRDiscDNSDomain type) and add it to the hash value
+	for (i = 0; i < pvd->dns_domains->len; i++) {
+		NMRDiscDNSDomain *item = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain, i);
+
+		for (j = 0; item->domain[j] != 0; j++) {
+			hash ^= (guint)(item->domain[j]);
+			hash += (guint)(item->domain[j]);
+			hash = (hash << 8) | (hash >> 24);
+		}
+	}
+
+	return hash;
+}
+
+static gboolean
+pvd_cmp_func(gconstpointer a, gconstpointer b)
+{
+	NMRDiscPVD *pvd_a = (NMRDiscPVD *)a;
+	NMRDiscPVD *pvd_b = (NMRDiscPVD *)b;
+
+	int i, j;
+	gboolean found;
+
+	// Number of elements in arrays in both structures must be same
+	if (pvd_a->gateways->len != pvd_b->gateways->len
+			|| pvd_a->addresses->len != pvd_b->addresses->len
+			|| pvd_a->routes->len != pvd_b->routes->len
+			|| pvd_a->dns_servers->len != pvd_b->dns_servers->len
+			|| pvd_a->dns_domains->len != pvd_b->dns_domains->len)
+		return FALSE;
+
+	// Compare if gateways are equal
+	for (i = 0; i < pvd_a->gateways->len; i++) {
+		NMRDiscGateway *item_a = &g_array_index (pvd_a->gateways, NMRDiscGateway, i);
+
+		// Now search for a given gateway in the second array
+		found = FALSE;
+
+		// Compare if gateways are equal
+		for (j = 0; j < pvd_b->gateways->len; j++) {
+			NMRDiscGateway *item_b = &g_array_index (pvd_b->gateways, NMRDiscGateway, i);
+
+			if (memcmp(item_a, item_b, sizeof(struct in6_addr)) == 0) {
+				found = TRUE;
+				break;
+			}
+		}
+
+		if (!found)
+			return FALSE;
+	}
+
+	// Compare if addresses are equal
+	for (i = 0; i < pvd_a->addresses->len; i++) {
+		NMRDiscAddress *item_a = &g_array_index (pvd_a->addresses, NMRDiscAddress, i);
+
+		// Now search for a given gateway in the second array
+		found = FALSE;
+
+		// Compare if gateways are equal
+		for (j = 0; j < pvd_b->addresses->len; j++) {
+			NMRDiscAddress *item_b = &g_array_index (pvd_b->addresses, NMRDiscAddress, i);
+
+			if (memcmp(item_a, item_b, sizeof(struct in6_addr)) == 0) {
+				found = TRUE;
+				break;
+			}
+		}
+
+		if (!found)
+			return FALSE;
+	}
+
+	// Compare if routes are equal
+	for (i = 0; i < pvd_a->routes->len; i++) {
+		NMRDiscRoute *item_a = &g_array_index (pvd_a->routes, NMRDiscRoute, i);
+
+		// Now search for a given gateway in the second array
+		found = FALSE;
+
+		// Compare if gateways are equal
+		for (j = 0; j < pvd_b->routes->len; j++) {
+			NMRDiscRoute *item_b = &g_array_index (pvd_b->routes, NMRDiscRoute, i);
+
+			if (memcmp(item_a, item_b, sizeof(struct in6_addr) + sizeof(int)) == 0) {
+				found = TRUE;
+				break;
+			}
+		}
+
+		if (!found)
+			return FALSE;
+	}
+
+	// Compare if DNS servers are equal
+	for (i = 0; i < pvd_a->dns_servers->len; i++) {
+		NMRDiscDNSServer *item_a = &g_array_index (pvd_a->dns_servers, NMRDiscDNSServer, i);
+
+		// Now search for a given gateway in the second array
+		found = FALSE;
+
+		// Compare if gateways are equal
+		for (j = 0; j < pvd_b->dns_servers->len; j++) {
+			NMRDiscDNSServer *item_b = &g_array_index (pvd_b->dns_servers, NMRDiscDNSServer, i);
+
+			if (memcmp(item_a, item_b, sizeof(struct in6_addr)) == 0) {
+				found = TRUE;
+				break;
+			}
+		}
+
+		if (!found)
+			return FALSE;
+	}
+
+	// Compare if DNS domains are equal
+	for (i = 0; i < pvd_a->dns_domains->len; i++) {
+		NMRDiscDNSDomain *item_a = &g_array_index (pvd_a->dns_domains, NMRDiscDNSDomain, i);
+
+		// Now search for a given gateway in the second array
+		found = FALSE;
+
+		// Compare if gateways are equal
+		for (j = 0; j < pvd_b->dns_domains->len; j++) {
+			NMRDiscDNSDomain *item_b = &g_array_index (pvd_b->dns_domains, NMRDiscDNSDomain, i);
+
+			if (g_strcmp0(item_a->domain, item_b->domain) == 0) {
+				found = TRUE;
+				break;
+			}
+		}
+
+		if (!found)
+			return FALSE;
+	}
+
+	return TRUE;
+}
+
 static void
 nm_rdisc_init (NMRDisc *rdisc)
 {
@@ -681,6 +882,8 @@ nm_rdisc_init (NMRDisc *rdisc)
 	rdisc->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
 	g_array_set_clear_func (rdisc->dns_domains, dns_domain_free);
 	rdisc->hop_limit = 64;
+
+	rdisc->pvds = g_hash_table_new(pvd_hash_func, pvd_cmp_func);
 
 	/* Start at very low number so that last_rs - rtr_solicitation_interval
 	 * is much lower than nm_utils_get_monotonic_timestamp_s() at startup.
@@ -715,6 +918,8 @@ finalize (GObject *object)
 	g_array_unref (rdisc->routes);
 	g_array_unref (rdisc->dns_servers);
 	g_array_unref (rdisc->dns_domains);
+
+	g_hash_table_unref (rdisc->pvds);
 
 	G_OBJECT_CLASS (nm_rdisc_parent_class)->finalize (object);
 }

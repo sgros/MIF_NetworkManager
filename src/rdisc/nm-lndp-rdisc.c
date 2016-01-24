@@ -33,6 +33,8 @@
 #include "nm-default.h"
 #include "nm-platform.h"
 
+#include "nm-utils.h"
+
 #define _NMLOG_PREFIX_NAME                "rdisc-lndp"
 
 typedef struct {
@@ -93,6 +95,64 @@ translate_preference (enum ndp_route_preference preference)
 	}
 }
 
+static void
+pvd_dns_domain_free (gpointer data)
+{
+	g_free (((NMRDiscDNSDomain *)(data))->domain);
+}
+
+#define expiry(item) (item->timestamp + item->lifetime)
+
+static void
+pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
+{
+	int i;
+	char addrstr[INET6_ADDRSTRLEN];
+
+
+	switch(pvd->pvd_type) {
+	case NDP_PVDID_TYPE_UUID:
+		_LOGD ("PvD_ID type=%u id=%s", pvd->pvd_type, pvd->uuid);
+		break;
+
+	default:
+		_LOGW ("received unrecognized PvD ID type %u", pvd->pvd_type);
+		break;
+	}
+
+	for (i = 0; i < pvd->gateways->len; i++) {
+		NMRDiscGateway *gateway = &g_array_index (pvd->gateways, NMRDiscGateway, i);
+
+		inet_ntop (AF_INET6, &gateway->address, addrstr, sizeof (addrstr));
+		_LOGD ("  gateway %s pref %d exp %u", addrstr, gateway->preference, expiry (gateway));
+	}
+	for (i = 0; i < pvd->addresses->len; i++) {
+		NMRDiscAddress *address = &g_array_index (pvd->addresses, NMRDiscAddress, i);
+
+		inet_ntop (AF_INET6, &address->address, addrstr, sizeof (addrstr));
+		_LOGD ("  address %s exp %u", addrstr, expiry (address));
+	}
+	for (i = 0; i < pvd->routes->len; i++) {
+		NMRDiscRoute *route = &g_array_index (pvd->routes, NMRDiscRoute, i);
+
+		inet_ntop (AF_INET6, &route->network, addrstr, sizeof (addrstr));
+		_LOGD ("  route %s/%d via %s pref %d exp %u", addrstr, route->plen,
+			nm_utils_inet6_ntop (&route->gateway, NULL), route->preference,
+			expiry (route));
+	}
+	for (i = 0; i < pvd->dns_servers->len; i++) {
+		NMRDiscDNSServer *dns_server = &g_array_index (pvd->dns_servers, NMRDiscDNSServer, i);
+
+		inet_ntop (AF_INET6, &dns_server->address, addrstr, sizeof (addrstr));
+		_LOGD ("  dns_server %s exp %u", addrstr, expiry (dns_server));
+	}
+	for (i = 0; i < pvd->dns_domains->len; i++) {
+		NMRDiscDNSDomain *dns_domain = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain, i);
+
+		_LOGD ("  dns_domain %s exp %u", dns_domain->domain, expiry (dns_domain));
+	}
+}
+
 static int
 receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 {
@@ -101,8 +161,9 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	struct ndp_msgra *msgra = ndp_msgra (msg);
 	NMRDiscGateway gateway;
 	guint32 now = nm_utils_get_monotonic_timestamp_s ();
-	int offset;
+	int offset, suboffset;
 	int hop_limit;
+	gboolean err;
 
 	/* Router discovery is subject to the following RFC documents:
 	 *
@@ -265,6 +326,190 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			 * listen for further RAs that could fix the MTU. */
 			_LOGW ("MTU too small for IPv6 ignored: %d", mtu);
 		}
+	}
+
+	/* PvD Container option */
+	err = FALSE;
+	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_PVDCO) {
+
+		NMRDiscPVD *pvd, *opvd;
+
+		_LOGD ("received PvD CO option");
+
+		pvd = (NMRDiscPVD *)g_malloc0(sizeof(*pvd));
+
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_PVDID, offset, NDP_MSG_OPT_PVDCO) {
+
+			pvd->pvd_type = ndp_msg_opt_pvdid_type(msg, suboffset);
+			pvd->pvd_len = ndp_msg_opt_pvdid_len(msg, suboffset);
+
+			switch(pvd->pvd_type) {
+			case NDP_PVDID_TYPE_UUID:
+				memcpy(pvd->uuid, ndp_msg_opt_pvdid(msg, suboffset), pvd->pvd_len);
+				pvd->uuid[pvd->pvd_len + 1] = 0;
+				break;
+
+			default:
+				_LOGW ("received unrecognized PvD ID type %u, skipping PvD CO", pvd->pvd_type);
+				err = true;
+				break;
+			}
+
+			if (err)
+				break;
+		}
+
+		if (err) {
+			g_free(pvd);
+			continue;
+		}
+
+		pvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
+		pvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
+		pvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
+		pvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
+		pvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
+		g_array_set_clear_func (pvd->dns_domains, pvd_dns_domain_free);
+
+		/* MTU */
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_MTU, offset, NDP_MSG_OPT_PVDCO) {
+
+			guint32 mtu = ndp_msg_opt_mtu(msg, suboffset);
+			if (mtu >= 1280) {
+				pvd->mtu = mtu;
+			} else {
+				/* All sorts of bad things would happen if we accepted this.
+				 * Kernel would set it, but would flush out all IPv6 addresses away
+				 * from the link, even the link-local, and we wouldn't be able to
+				 * listen for further RAs that could fix the MTU. */
+				_LOGW ("MTU too small for IPv6 ignored: %d", mtu);
+			}
+		}
+
+		/* Addresses & Routes */
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_PREFIX, offset, NDP_MSG_OPT_PVDCO) {
+			NMRDiscRoute route;
+			NMRDiscAddress address;
+
+			memset (&route, 0, sizeof (route));
+			memset (&address, 0, sizeof (address));
+
+			/* Device route */
+			memset (&route, 0, sizeof (route));
+			route.plen = ndp_msg_opt_prefix_len (msg, suboffset);
+			nm_utils_ip6_address_clear_host_address (&route.network, ndp_msg_opt_prefix (msg, suboffset), route.plen);
+			route.timestamp = now;
+			if (ndp_msg_opt_prefix_flag_on_link (msg, suboffset)) {
+				route.lifetime = ndp_msg_opt_prefix_valid_time (msg, suboffset);
+				g_array_append_val (pvd->routes, route);
+			}
+
+			/* Address */
+			if (ndp_msg_opt_prefix_flag_auto_addr_conf (msg, suboffset)) {
+				if (route.plen == 64) {
+					memset (&address, 0, sizeof (address));
+					address.address = route.network;
+					address.timestamp = now;
+					address.lifetime = ndp_msg_opt_prefix_valid_time (msg, suboffset);
+					address.preferred = ndp_msg_opt_prefix_preferred_time (msg, suboffset);
+					if (address.preferred > address.lifetime)
+						address.preferred = address.lifetime;
+
+					g_array_append_val (pvd->addresses, address);
+				}
+			}
+		}
+
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_ROUTE, offset, NDP_MSG_OPT_PVDCO) {
+			NMRDiscRoute route;
+
+			/* Routers through this particular gateway */
+			memset (&route, 0, sizeof (route));
+			route.gateway = gateway.address;
+			route.plen = ndp_msg_opt_route_prefix_len (msg, suboffset);
+			nm_utils_ip6_address_clear_host_address (&route.network, ndp_msg_opt_route_prefix (msg, suboffset), route.plen);
+			route.timestamp = now;
+			route.lifetime = ndp_msg_opt_route_lifetime (msg, suboffset);
+			route.preference = translate_preference (ndp_msg_opt_route_preference (msg, suboffset));
+			g_array_append_val (pvd->routes, route);
+		}
+
+		/* DNS information */
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_RDNSS, offset, NDP_MSG_OPT_PVDCO) {
+			static struct in6_addr *addr;
+			int addr_index;
+
+			ndp_msg_opt_rdnss_for_each_addr (addr, addr_index, msg, suboffset) {
+				NMRDiscDNSServer dns_server;
+
+				memset (&dns_server, 0, sizeof (dns_server));
+				dns_server.address = *addr;
+				dns_server.timestamp = now;
+				dns_server.lifetime = ndp_msg_opt_rdnss_lifetime (msg, suboffset);
+				/* Pad the lifetime somewhat to give a bit of slack in cases
+				 * where one RA gets lost or something (which can happen on unreliable
+				 * links like WiFi where certain types of frames are not retransmitted).
+				 * Note that 0 has special meaning and is therefore not adjusted.
+				 */
+				if (dns_server.lifetime && dns_server.lifetime < 7200)
+					dns_server.lifetime = 7200;
+				g_array_append_val (pvd->dns_servers, dns_server);
+			}
+		}
+
+		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
+				NDP_MSG_OPT_DNSSL, offset, NDP_MSG_OPT_PVDCO) {
+			char *domain;
+			int domain_index;
+			NMRDiscDNSDomain *item;
+
+			ndp_msg_opt_dnssl_for_each_domain (domain, domain_index, msg, suboffset) {
+				NMRDiscDNSDomain dns_domain;
+
+				memset (&dns_domain, 0, sizeof (dns_domain));
+				dns_domain.domain = domain;
+				dns_domain.timestamp = now;
+				dns_domain.lifetime = ndp_msg_opt_rdnss_lifetime (msg, suboffset);
+				/* Pad the lifetime somewhat to give a bit of slack in cases
+				 * where one RA gets lost or something (which can happen on unreliable
+				 * links like WiFi where certain types of frames are not retransmitted).
+				 * Note that 0 has special meaning and is therefore not adjusted.
+				 */
+				if (dns_domain.lifetime && dns_domain.lifetime < 7200)
+					dns_domain.lifetime = 7200;
+
+				g_array_append_val (pvd->dns_domains, dns_domain);
+				item = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain,
+						pvd->dns_domains->len - 1);
+				item->domain = g_strdup (domain);
+
+			}
+		}
+
+		pvd_dump(rdisc, pvd);
+
+		opvd = (NMRDiscPVD *)g_hash_table_lookup(rdisc->pvds, pvd);
+		if (!opvd) {
+			_LOGD("Received new PvD");
+
+			g_hash_table_insert(rdisc->pvds, pvd, pvd);
+		} else {
+			_LOGD("Received existing PvD");
+
+			g_array_unref(pvd->gateways);
+			g_array_unref(pvd->addresses);
+			g_array_unref(pvd->routes);
+			g_array_unref(pvd->dns_servers);
+			g_array_unref(pvd->dns_domains);
+
+			g_free(pvd);
+		}
+
 	}
 
 	nm_rdisc_ra_received (rdisc, now, changed);
