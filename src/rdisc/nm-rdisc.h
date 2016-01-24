@@ -97,6 +97,7 @@ typedef struct {
 	int pvd_len;
 
 	union {
+		// Note this MUST be a NULL terminated UUID
 		char uuid[36];
 	};
 
