@@ -414,6 +414,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	} else {
 		_LOGD("Received existing PvD");
 
+		// TODO: Update existing PvD, or remove it if necessary
+
 		g_array_unref(ipvd->gateways);
 		g_array_unref(ipvd->addresses);
 		g_array_unref(ipvd->routes);
@@ -595,6 +597,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			g_hash_table_insert(rdisc->pvds, pvd, pvd);
 		} else {
 			_LOGD("Received existing PvD");
+
+			// TODO: Update existing PvD, or remove it if necessary
 
 			g_array_unref(pvd->gateways);
 			g_array_unref(pvd->addresses);
