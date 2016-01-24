@@ -705,6 +705,20 @@ pvd_cmp_func(gconstpointer a, gconstpointer b)
 }
 
 static void
+pvd_val_remove(gpointer key)
+{
+	NMRDiscPVD *pvd = (NMRDiscPVD *)key;
+
+	g_array_unref(pvd->gateways);
+	g_array_unref(pvd->addresses);
+	g_array_unref(pvd->routes);
+	g_array_unref(pvd->dns_servers);
+	g_array_unref(pvd->dns_domains);
+
+	g_free(pvd);
+}
+
+static void
 nm_rdisc_init (NMRDisc *rdisc)
 {
 	NMRDiscPrivate *priv = NM_RDISC_GET_PRIVATE (rdisc);
@@ -717,7 +731,10 @@ nm_rdisc_init (NMRDisc *rdisc)
 	g_array_set_clear_func (rdisc->dns_domains, dns_domain_free);
 	rdisc->hop_limit = 64;
 
-	rdisc->pvds = g_hash_table_new(pvd_hash_func, pvd_cmp_func);
+	// We create a hash table for PvDs and supply function to remove
+	// values. But, each key has for a value itself, so there is no
+	// need to remove key.
+	rdisc->pvds = g_hash_table_new_full(pvd_hash_func, pvd_cmp_func, NULL, pvd_val_remove);
 
 	/* Start at very low number so that last_rs - rtr_solicitation_interval
 	 * is much lower than nm_utils_get_monotonic_timestamp_s() at startup.

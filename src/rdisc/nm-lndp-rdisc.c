@@ -110,7 +110,6 @@ pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	int i;
 	char addrstr[INET6_ADDRSTRLEN];
 
-
 	switch(pvd->pvd_type) {
 	case NDP_PVDID_TYPE_UUID:
 		_LOGD ("PvD_ID type=%u id=%s", pvd->pvd_type, pvd->uuid);
@@ -207,18 +206,18 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	int hop_limit;
 	gboolean err;
 
-	NMRDiscPVD *ipvd, *oipvd;
-	char *ipvd_uuid;
+	NMRDiscPVD *pvd;
+	char *pvd_uuid;
 
 	// Initialize PvD structure
-	ipvd = (NMRDiscPVD *)g_malloc0(sizeof(*ipvd));
+	pvd = (NMRDiscPVD *)g_malloc0(sizeof(*pvd));
 
-	ipvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
-	ipvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
-	ipvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
-	ipvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
-	ipvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
-	g_array_set_clear_func (ipvd->dns_domains, pvd_dns_domain_free);
+	pvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
+	pvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
+	pvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
+	pvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
+	pvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
+	g_array_set_clear_func (pvd->dns_domains, pvd_dns_domain_free);
 
 	/* Router discovery is subject to the following RFC documents:
 	 *
@@ -269,7 +268,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	if (nm_rdisc_add_gateway (rdisc, &gateway))
 		changed |= NM_RDISC_CONFIG_GATEWAYS;
 
-	g_array_append_val(ipvd->gateways, gateway);
+	g_array_append_val(pvd->gateways, gateway);
 
 	/* Addresses & Routes */
 	ndp_msg_opt_for_each_offset (offset, msg, NDP_MSG_OPT_PREFIX) {
@@ -285,7 +284,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			route.lifetime = ndp_msg_opt_prefix_valid_time (msg, offset);
 			if (nm_rdisc_add_route (rdisc, &route))
 				changed |= NM_RDISC_CONFIG_ROUTES;
-			g_array_append_val(ipvd->routes, route);
+			g_array_append_val(pvd->routes, route);
 		}
 
 		/* Address */
@@ -302,7 +301,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 				if (nm_rdisc_complete_and_add_address (rdisc, &address))
 					changed |= NM_RDISC_CONFIG_ADDRESSES;
 
-				g_array_append_val(ipvd->addresses, address);
+				g_array_append_val(pvd->addresses, address);
 			}
 		}
 	}
@@ -319,7 +318,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		route.preference = translate_preference (ndp_msg_opt_route_preference (msg, offset));
 		if (nm_rdisc_add_route (rdisc, &route))
 			changed |= NM_RDISC_CONFIG_ROUTES;
-		g_array_append_val(ipvd->routes, route);
+		g_array_append_val(pvd->routes, route);
 	}
 
 	/* DNS information */
@@ -344,7 +343,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			if (nm_rdisc_add_dns_server (rdisc, &dns_server))
 				changed |= NM_RDISC_CONFIG_DNS_SERVERS;
 
-			g_array_append_val(ipvd->dns_servers, dns_server);
+			g_array_append_val(pvd->dns_servers, dns_server);
 		}
 	}
 	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_DNSSL) {
@@ -368,9 +367,9 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			if (nm_rdisc_add_dns_domain (rdisc, &dns_domain))
 				changed |= NM_RDISC_CONFIG_DNS_DOMAINS;
 
-			g_array_append_val (ipvd->dns_domains, dns_domain);
-			item = &g_array_index (ipvd->dns_domains, NMRDiscDNSDomain,
-					ipvd->dns_domains->len - 1);
+			g_array_append_val (pvd->dns_domains, dns_domain);
+			item = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain,
+					pvd->dns_domains->len - 1);
 			item->domain = g_strdup (domain);
 		}
 	}
@@ -387,7 +386,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		if (mtu >= 1280) {
 			rdisc->mtu = mtu;
 			changed |= NM_RDISC_CONFIG_MTU;
-			ipvd->mtu = mtu;
+			pvd->mtu = mtu;
 		} else {
 			/* All sorts of bad things would happen if we accepted this.
 			 * Kernel would set it, but would flush out all IPv6 addresses away
@@ -397,39 +396,23 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		}
 	}
 
-	ipvd_uuid = pvd_generate_uuid(rdisc, ipvd);
-	strncpy(ipvd->uuid, ipvd_uuid, 36);
-	g_free(ipvd_uuid);
+	pvd_uuid = pvd_generate_uuid(rdisc, pvd);
+	strncpy(pvd->uuid, pvd_uuid, 36);
+	g_free(pvd_uuid);
 
-	ipvd->pvd_type = NDP_PVDID_TYPE_UUID;
+	pvd->pvd_type = NDP_PVDID_TYPE_UUID;
 
 	_LOGD("Received implicit PvD");
-	pvd_dump(rdisc, ipvd);
+	pvd_dump(rdisc, pvd);
 
-	oipvd = (NMRDiscPVD *)g_hash_table_lookup(rdisc->pvds, ipvd);
-	if (!oipvd) {
+	if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
 		_LOGD("Received new PvD");
-
-		g_hash_table_insert(rdisc->pvds, ipvd, ipvd);
-	} else {
+	else
 		_LOGD("Received existing PvD");
-
-		// TODO: Update existing PvD, or remove it if necessary
-
-		g_array_unref(ipvd->gateways);
-		g_array_unref(ipvd->addresses);
-		g_array_unref(ipvd->routes);
-		g_array_unref(ipvd->dns_servers);
-		g_array_unref(ipvd->dns_domains);
-
-		g_free(ipvd);
-	}
 
 	/* PvD Container option */
 	err = FALSE;
 	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_PVDCO) {
-
-		NMRDiscPVD *pvd, *opvd;
 
 		_LOGD ("received PvD CO option");
 
@@ -590,25 +573,10 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 
 		pvd_dump(rdisc, pvd);
 
-		opvd = (NMRDiscPVD *)g_hash_table_lookup(rdisc->pvds, pvd);
-		if (!opvd) {
+		if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
 			_LOGD("Received new PvD");
-
-			g_hash_table_insert(rdisc->pvds, pvd, pvd);
-		} else {
+		else
 			_LOGD("Received existing PvD");
-
-			// TODO: Update existing PvD, or remove it if necessary
-
-			g_array_unref(pvd->gateways);
-			g_array_unref(pvd->addresses);
-			g_array_unref(pvd->routes);
-			g_array_unref(pvd->dns_servers);
-			g_array_unref(pvd->dns_domains);
-
-			g_free(pvd);
-		}
-
 	}
 
 	nm_rdisc_ra_received (rdisc, now, changed);
