@@ -460,74 +460,74 @@ state_to_string (NMDeviceState state)
 	return queued_state_to_string (state) + strlen (QUEUED_PREFIX);
 }
 
-NM_UTILS_STRING_LOOKUP_TABLE_DEFINE_STATIC (_reason_to_string, NMDeviceStateReason, NULL,
-	[NM_DEVICE_STATE_REASON_UNKNOWN]                  = "unknown",
-	[NM_DEVICE_STATE_REASON_NONE]                     = "none",
-	[NM_DEVICE_STATE_REASON_NOW_MANAGED]              = "managed",
-	[NM_DEVICE_STATE_REASON_NOW_UNMANAGED]            = "unmanaged",
-	[NM_DEVICE_STATE_REASON_CONFIG_FAILED]            = "config-failed",
-	[NM_DEVICE_STATE_REASON_IP_CONFIG_UNAVAILABLE]    = "ip-config-unavailable",
-	[NM_DEVICE_STATE_REASON_IP_CONFIG_EXPIRED]        = "ip-config-expired",
-	[NM_DEVICE_STATE_REASON_NO_SECRETS]               = "no-secrets",
-	[NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT]    = "supplicant-disconnect",
-	[NM_DEVICE_STATE_REASON_SUPPLICANT_CONFIG_FAILED] = "supplicant-config-failed",
-	[NM_DEVICE_STATE_REASON_SUPPLICANT_FAILED]        = "supplicant-failed",
-	[NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT]       = "supplicant-timeout",
-	[NM_DEVICE_STATE_REASON_PPP_START_FAILED]         = "ppp-start-failed",
-	[NM_DEVICE_STATE_REASON_PPP_DISCONNECT]           = "ppp-disconnect",
-	[NM_DEVICE_STATE_REASON_PPP_FAILED]               = "ppp-failed",
-	[NM_DEVICE_STATE_REASON_DHCP_START_FAILED]        = "dhcp-start-failed",
-	[NM_DEVICE_STATE_REASON_DHCP_ERROR]               = "dhcp-error",
-	[NM_DEVICE_STATE_REASON_DHCP_FAILED]              = "dhcp-failed",
-	[NM_DEVICE_STATE_REASON_SHARED_START_FAILED]      = "sharing-start-failed",
-	[NM_DEVICE_STATE_REASON_SHARED_FAILED]            = "sharing-failed",
-	[NM_DEVICE_STATE_REASON_AUTOIP_START_FAILED]      = "autoip-start-failed",
-	[NM_DEVICE_STATE_REASON_AUTOIP_ERROR]             = "autoip-error",
-	[NM_DEVICE_STATE_REASON_AUTOIP_FAILED]            = "autoip-failed",
-	[NM_DEVICE_STATE_REASON_MODEM_BUSY]               = "modem-busy",
-	[NM_DEVICE_STATE_REASON_MODEM_NO_DIAL_TONE]       = "modem-no-dialtone",
-	[NM_DEVICE_STATE_REASON_MODEM_NO_CARRIER]         = "modem-no-carrier",
-	[NM_DEVICE_STATE_REASON_MODEM_DIAL_TIMEOUT]       = "modem-dial-timeout",
-	[NM_DEVICE_STATE_REASON_MODEM_DIAL_FAILED]        = "modem-dial-failed",
-	[NM_DEVICE_STATE_REASON_MODEM_INIT_FAILED]        = "modem-init-failed",
-	[NM_DEVICE_STATE_REASON_GSM_APN_FAILED]           = "gsm-apn-failed",
-	[NM_DEVICE_STATE_REASON_GSM_REGISTRATION_NOT_SEARCHING] = "gsm-registration-idle",
-	[NM_DEVICE_STATE_REASON_GSM_REGISTRATION_DENIED]  = "gsm-registration-denied",
-	[NM_DEVICE_STATE_REASON_GSM_REGISTRATION_TIMEOUT] = "gsm-registration-timeout",
-	[NM_DEVICE_STATE_REASON_GSM_REGISTRATION_FAILED]  = "gsm-registration-failed",
-	[NM_DEVICE_STATE_REASON_GSM_PIN_CHECK_FAILED]     = "gsm-pin-check-failed",
-	[NM_DEVICE_STATE_REASON_FIRMWARE_MISSING]         = "firmware-missing",
-	[NM_DEVICE_STATE_REASON_REMOVED]                  = "removed",
-	[NM_DEVICE_STATE_REASON_SLEEPING]                 = "sleeping",
-	[NM_DEVICE_STATE_REASON_CONNECTION_REMOVED]       = "connection-removed",
-	[NM_DEVICE_STATE_REASON_USER_REQUESTED]           = "user-requested",
-	[NM_DEVICE_STATE_REASON_CARRIER]                  = "carrier-changed",
-	[NM_DEVICE_STATE_REASON_CONNECTION_ASSUMED]       = "connection-assumed",
-	[NM_DEVICE_STATE_REASON_SUPPLICANT_AVAILABLE]     = "supplicant-available",
-	[NM_DEVICE_STATE_REASON_MODEM_NOT_FOUND]          = "modem-not-found",
-	[NM_DEVICE_STATE_REASON_BT_FAILED]                = "bluetooth-failed",
-	[NM_DEVICE_STATE_REASON_GSM_SIM_NOT_INSERTED]     = "gsm-sim-not-inserted",
-	[NM_DEVICE_STATE_REASON_GSM_SIM_PIN_REQUIRED]     = "gsm-sim-pin-required",
-	[NM_DEVICE_STATE_REASON_GSM_SIM_PUK_REQUIRED]     = "gsm-sim-puk-required",
-	[NM_DEVICE_STATE_REASON_GSM_SIM_WRONG]            = "gsm-sim-wrong",
-	[NM_DEVICE_STATE_REASON_INFINIBAND_MODE]          = "infiniband-mode",
-	[NM_DEVICE_STATE_REASON_DEPENDENCY_FAILED]        = "dependency-failed",
-	[NM_DEVICE_STATE_REASON_BR2684_FAILED]            = "br2684-bridge-failed",
-	[NM_DEVICE_STATE_REASON_MODEM_MANAGER_UNAVAILABLE] = "modem-manager-unavailable",
-	[NM_DEVICE_STATE_REASON_SSID_NOT_FOUND]           = "ssid-not-found",
-	[NM_DEVICE_STATE_REASON_SECONDARY_CONNECTION_FAILED] = "secondary-connection-failed",
-	[NM_DEVICE_STATE_REASON_DCB_FCOE_FAILED]          = "dcb-fcoe-failed",
-	[NM_DEVICE_STATE_REASON_TEAMD_CONTROL_FAILED]     = "teamd-control-failed",
-	[NM_DEVICE_STATE_REASON_MODEM_FAILED]             = "modem-failed",
-	[NM_DEVICE_STATE_REASON_MODEM_AVAILABLE]          = "modem-available",
-	[NM_DEVICE_STATE_REASON_SIM_PIN_INCORRECT]        = "sim-pin-incorrect",
-	[NM_DEVICE_STATE_REASON_NEW_ACTIVATION]           = "new-activation",
-	[NM_DEVICE_STATE_REASON_PARENT_CHANGED]           = "parent-changed",
-	[NM_DEVICE_STATE_REASON_PARENT_MANAGED_CHANGED]   = "parent-managed-changed",
+NM_UTILS_LOOKUP_STR_DEFINE_STATIC (_reason_to_string, NMDeviceStateReason, NULL,
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_UNKNOWN,                        "unknown"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_NONE,                           "none"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_NOW_MANAGED,                    "managed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_NOW_UNMANAGED,                  "unmanaged"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_CONFIG_FAILED,                  "config-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_IP_CONFIG_UNAVAILABLE,          "ip-config-unavailable"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_IP_CONFIG_EXPIRED,              "ip-config-expired"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_NO_SECRETS,                     "no-secrets"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SUPPLICANT_DISCONNECT,          "supplicant-disconnect"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SUPPLICANT_CONFIG_FAILED,       "supplicant-config-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SUPPLICANT_FAILED,              "supplicant-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SUPPLICANT_TIMEOUT,             "supplicant-timeout"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_PPP_START_FAILED,               "ppp-start-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_PPP_DISCONNECT,                 "ppp-disconnect"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_PPP_FAILED,                     "ppp-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_DHCP_START_FAILED,              "dhcp-start-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_DHCP_ERROR,                     "dhcp-error"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_DHCP_FAILED,                    "dhcp-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SHARED_START_FAILED,            "sharing-start-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SHARED_FAILED,                  "sharing-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_AUTOIP_START_FAILED,            "autoip-start-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_AUTOIP_ERROR,                   "autoip-error"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_AUTOIP_FAILED,                  "autoip-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_BUSY,                     "modem-busy"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_NO_DIAL_TONE,             "modem-no-dialtone"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_NO_CARRIER,               "modem-no-carrier"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_DIAL_TIMEOUT,             "modem-dial-timeout"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_DIAL_FAILED,              "modem-dial-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_INIT_FAILED,              "modem-init-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_APN_FAILED,                 "gsm-apn-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_REGISTRATION_NOT_SEARCHING, "gsm-registration-idle"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_REGISTRATION_DENIED,        "gsm-registration-denied"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_REGISTRATION_TIMEOUT,       "gsm-registration-timeout"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_REGISTRATION_FAILED,        "gsm-registration-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_PIN_CHECK_FAILED,           "gsm-pin-check-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_FIRMWARE_MISSING,               "firmware-missing"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_REMOVED,                        "removed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SLEEPING,                       "sleeping"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_CONNECTION_REMOVED,             "connection-removed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_USER_REQUESTED,                 "user-requested"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_CARRIER,                        "carrier-changed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_CONNECTION_ASSUMED,             "connection-assumed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SUPPLICANT_AVAILABLE,           "supplicant-available"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_NOT_FOUND,                "modem-not-found"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_BT_FAILED,                      "bluetooth-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_SIM_NOT_INSERTED,           "gsm-sim-not-inserted"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_SIM_PIN_REQUIRED,           "gsm-sim-pin-required"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_SIM_PUK_REQUIRED,           "gsm-sim-puk-required"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_GSM_SIM_WRONG,                  "gsm-sim-wrong"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_INFINIBAND_MODE,                "infiniband-mode"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_DEPENDENCY_FAILED,              "dependency-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_BR2684_FAILED,                  "br2684-bridge-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_MANAGER_UNAVAILABLE,      "modem-manager-unavailable"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SSID_NOT_FOUND,                 "ssid-not-found"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SECONDARY_CONNECTION_FAILED,    "secondary-connection-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_DCB_FCOE_FAILED,                "dcb-fcoe-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_TEAMD_CONTROL_FAILED,           "teamd-control-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_FAILED,                   "modem-failed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_MODEM_AVAILABLE,                "modem-available"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_SIM_PIN_INCORRECT,              "sim-pin-incorrect"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_NEW_ACTIVATION,                 "new-activation"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_PARENT_CHANGED,                 "parent-changed"),
+	NM_UTILS_LOOKUP_STR_ITEM (NM_DEVICE_STATE_REASON_PARENT_MANAGED_CHANGED,         "parent-managed-changed"),
 );
 
 #define reason_to_string(reason) \
-	NM_UTILS_STRING_LOOKUP_TABLE (_reason_to_string, reason)
+	NM_UTILS_LOOKUP_STR (_reason_to_string, reason)
 
 /***********************************************************/
 
@@ -2010,7 +2010,7 @@ unrealize_notify (NMDevice *self)
 }
 
 static gboolean
-available_connection_check_delete_unrealized_on_idle (gpointer user_data)
+available_connections_check_delete_unrealized_on_idle (gpointer user_data)
 {
 	NMDevice *self = user_data;
 	NMDevicePrivate *priv;
@@ -2029,7 +2029,7 @@ available_connection_check_delete_unrealized_on_idle (gpointer user_data)
 }
 
 static void
-available_connection_check_delete_unrealized (NMDevice *self)
+available_connections_check_delete_unrealized (NMDevice *self)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 
@@ -2038,7 +2038,7 @@ available_connection_check_delete_unrealized (NMDevice *self)
 
 	if (   g_hash_table_size (priv->available_connections) == 0
 	    && !nm_device_is_real (self))
-		priv->check_delete_unrealized_id = g_idle_add (available_connection_check_delete_unrealized_on_idle, self);
+		priv->check_delete_unrealized_id = g_idle_add (available_connections_check_delete_unrealized_on_idle, self);
 }
 
 /**
@@ -9283,34 +9283,30 @@ nm_device_check_connection_available (NMDevice *self,
 }
 
 static void
-_signal_available_connections_changed (NMDevice *self)
+available_connections_notify (NMDevice *self)
 {
-	g_object_notify (G_OBJECT (self), NM_DEVICE_AVAILABLE_CONNECTIONS);
-}
-
-static void
-_clear_available_connections (NMDevice *self, gboolean do_signal)
-{
-	g_hash_table_remove_all (NM_DEVICE_GET_PRIVATE (self)->available_connections);
-	if (do_signal == TRUE)
-		_signal_available_connections_changed (self);
+	g_object_notify ((GObject *) self, NM_DEVICE_AVAILABLE_CONNECTIONS);
 }
 
 static gboolean
-_try_add_available_connection (NMDevice *self, NMConnection *connection)
+available_connections_del_all (NMDevice *self)
 {
-	if (nm_device_check_connection_available (self, connection, NM_DEVICE_CHECK_CON_AVAILABLE_NONE, NULL)) {
-		g_hash_table_add (NM_DEVICE_GET_PRIVATE (self)->available_connections,
-		                  g_object_ref (connection));
-		return TRUE;
-	}
-	return FALSE;
+	if (g_hash_table_size (self->priv->available_connections) == 0)
+		return FALSE;
+	g_hash_table_remove_all (self->priv->available_connections);
+	return TRUE;
 }
 
 static gboolean
-_del_available_connection (NMDevice *self, NMConnection *connection)
+available_connections_add (NMDevice *self, NMConnection *connection)
 {
-	return g_hash_table_remove (NM_DEVICE_GET_PRIVATE (self)->available_connections, connection);
+	return nm_g_hash_table_add (self->priv->available_connections, g_object_ref (connection));
+}
+
+static gboolean
+available_connections_del (NMDevice *self, NMConnection *connection)
+{
+	return g_hash_table_remove (self->priv->available_connections, connection);
 }
 
 static gboolean
@@ -9345,22 +9341,51 @@ nm_device_recheck_available_connections (NMDevice *self)
 {
 	NMDevicePrivate *priv;
 	const GSList *connections, *iter;
+	gboolean changed = FALSE;
+	GHashTableIter h_iter;
+	NMConnection *connection;
 
 	g_return_if_fail (NM_IS_DEVICE (self));
 
 	priv = NM_DEVICE_GET_PRIVATE(self);
 
 	if (priv->con_provider) {
-		_clear_available_connections (self, FALSE);
+		gs_unref_hashtable GHashTable *prune_list = NULL;
+
+		if (g_hash_table_size (priv->available_connections) > 0) {
+			prune_list = g_hash_table_new (g_direct_hash, g_direct_equal);
+			g_hash_table_iter_init (&h_iter, priv->available_connections);
+			while (g_hash_table_iter_next (&h_iter, (gpointer *) &connection, NULL))
+				g_hash_table_add (prune_list, connection);
+		}
 
 		connections = nm_connection_provider_get_connections (priv->con_provider);
-		for (iter = connections; iter; iter = g_slist_next (iter))
-			_try_add_available_connection (self, NM_CONNECTION (iter->data));
+		for (iter = connections; iter; iter = g_slist_next (iter)) {
+			connection = NM_CONNECTION (iter->data);
 
-		_signal_available_connections_changed (self);
+			if (available_connections_add (self, connection)) {
+				if (prune_list)
+					g_hash_table_remove (prune_list, connection);
+				changed = TRUE;
+			}
+		}
+
+		if (prune_list) {
+			g_hash_table_iter_init (&h_iter, prune_list);
+			while (g_hash_table_iter_next (&h_iter, (gpointer *) &connection, NULL)) {
+				if (available_connections_del (self, connection))
+					changed = TRUE;
+			}
+		}
+	} else {
+		if (available_connections_del_all (self))
+			changed = TRUE;
 	}
 
-	available_connection_check_delete_unrealized (self);
+	if (changed) {
+		available_connections_notify (self);
+		available_connections_check_delete_unrealized (self);
+	}
 }
 
 /**
@@ -9400,14 +9425,26 @@ nm_device_get_available_connections (NMDevice *self, const char *specific_object
 }
 
 static void
-cp_connection_added (NMConnectionProvider *cp, NMConnection *connection, gpointer user_data)
+cp_connection_added_or_updated (NMConnectionProvider *cp, NMConnection *connection, gpointer user_data)
 {
+	gboolean changed;
 	NMDevice *self = user_data;
 
 	g_return_if_fail (NM_IS_DEVICE (self));
+	g_return_if_fail (NM_IS_SETTINGS_CONNECTION (connection));
 
-	if (_try_add_available_connection (self, connection))
-		_signal_available_connections_changed (self);
+	if (nm_device_check_connection_available (self,
+	                                          connection,
+	                                          NM_DEVICE_CHECK_CON_AVAILABLE_NONE,
+	                                          NULL))
+		changed = available_connections_add (self, connection);
+	else
+		changed = available_connections_del (self, connection);
+
+	if (changed) {
+		available_connections_notify (self);
+		available_connections_check_delete_unrealized (self);
+	}
 }
 
 static void
@@ -9417,28 +9454,9 @@ cp_connection_removed (NMConnectionProvider *cp, NMConnection *connection, gpoin
 
 	g_return_if_fail (NM_IS_DEVICE (self));
 
-	if (_del_available_connection (self, connection)) {
-		_signal_available_connections_changed (self);
-		available_connection_check_delete_unrealized (self);
-	}
-}
-
-static void
-cp_connection_updated (NMConnectionProvider *cp, NMConnection *connection, gpointer user_data)
-{
-	NMDevice *self = user_data;
-	gboolean added, deleted;
-
-	g_return_if_fail (NM_IS_DEVICE (self));
-
-	/* FIXME: don't remove it from the hash if it's just going to get re-added */
-	deleted = _del_available_connection (self, connection);
-	added = _try_add_available_connection (self, connection);
-
-	/* Only signal if the connection was removed OR added, but not both */
-	if (added != deleted) {
-		_signal_available_connections_changed (self);
-		available_connection_check_delete_unrealized (self);
+	if (available_connections_del (self, connection)) {
+		available_connections_notify (self);
+		available_connections_check_delete_unrealized (self);
 	}
 }
 
@@ -10058,7 +10076,8 @@ _set_state_full (NMDevice *self,
 	req = priv->act_request ? g_object_ref (priv->act_request) : NULL;
 
 	if (state <= NM_DEVICE_STATE_UNAVAILABLE) {
-		_clear_available_connections (self, TRUE);
+		if (available_connections_del_all (self))
+			available_connections_notify (self);
 		_clear_queued_act_request (priv);
 	}
 
@@ -10746,7 +10765,7 @@ constructed (GObject *object)
 	g_assert (priv->con_provider);
 	g_signal_connect (priv->con_provider,
 	                  NM_CP_SIGNAL_CONNECTION_ADDED,
-	                  G_CALLBACK (cp_connection_added),
+	                  G_CALLBACK (cp_connection_added_or_updated),
 	                  self);
 
 	g_signal_connect (priv->con_provider,
@@ -10756,7 +10775,7 @@ constructed (GObject *object)
 
 	g_signal_connect (priv->con_provider,
 	                  NM_CP_SIGNAL_CONNECTION_UPDATED,
-	                  G_CALLBACK (cp_connection_updated),
+	                  G_CALLBACK (cp_connection_added_or_updated),
 	                  self);
 
 	/* Update default-unmanaged device available connections immediately,
@@ -10811,13 +10830,12 @@ dispose (GObject *object)
 	link_disconnect_action_cancel (self);
 
 	if (priv->con_provider) {
-		g_signal_handlers_disconnect_by_func (priv->con_provider, cp_connection_added, self);
+		g_signal_handlers_disconnect_by_func (priv->con_provider, cp_connection_added_or_updated, self);
 		g_signal_handlers_disconnect_by_func (priv->con_provider, cp_connection_removed, self);
-		g_signal_handlers_disconnect_by_func (priv->con_provider, cp_connection_updated, self);
 		priv->con_provider = NULL;
 	}
 
-	g_hash_table_remove_all (priv->available_connections);
+	available_connections_del_all (self);
 
 	nm_clear_g_source (&priv->carrier_wait_id);
 
