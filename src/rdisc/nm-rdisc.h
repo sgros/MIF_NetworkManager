@@ -98,16 +98,14 @@ typedef struct {
 
 	union {
 		// Note this MUST be a NULL terminated UUID
-		char uuid[36];
+		char uuid[37];
 	};
 
-	NMRDiscDHCPLevel dhcp_level;
 	GArray *gateways;
 	GArray *addresses;
 	GArray *routes;
 	GArray *dns_servers;
 	GArray *dns_domains;
-	int hop_limit;
 	guint32 mtu;
 } NMRDiscPVD;
 

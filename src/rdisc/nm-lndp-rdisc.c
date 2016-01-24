@@ -34,6 +34,7 @@
 #include "nm-platform.h"
 
 #include "nm-utils.h"
+#include "nm-core-internal.h"
 
 #define _NMLOG_PREFIX_NAME                "rdisc-lndp"
 
@@ -153,6 +154,47 @@ pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	}
 }
 
+static char *
+pvd_generate_uuid (NMRDisc *rdisc, NMRDiscPVD *pvd)
+{
+	char buf[2048], *uuid;
+	gssize buf_len = 0;
+	int i;
+
+	for (i = 0; i < pvd->gateways->len; i++) {
+		NMRDiscGateway *gateway = &g_array_index (pvd->gateways, NMRDiscGateway, i);
+
+		memcpy(buf + buf_len, &gateway->address, sizeof(gateway->address));
+		buf_len += sizeof(gateway->address);
+	}
+	for (i = 0; i < pvd->routes->len; i++) {
+		NMRDiscRoute *route = &g_array_index (pvd->routes, NMRDiscRoute, i);
+
+		memcpy(buf + buf_len, &route->network, sizeof(route->network));
+		buf_len += sizeof(route->network);
+	}
+	for (i = 0; i < pvd->dns_servers->len; i++) {
+		NMRDiscDNSServer *dns_server = &g_array_index (pvd->dns_servers, NMRDiscDNSServer, i);
+
+		memcpy(buf + buf_len, &dns_server->address, sizeof(dns_server->address));
+		buf_len += sizeof(dns_server->address);
+	}
+	for (i = 0; i < pvd->dns_domains->len; i++) {
+		NMRDiscDNSDomain *dns_domain = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain, i);
+
+		memcpy(buf + buf_len, &dns_domain->domain, strlen(dns_domain->domain));
+		buf_len += sizeof(dns_domain->domain);
+	}
+
+	_LOGD("Data length in buffer to create UUID is %lu", buf_len);
+
+	uuid = nm_utils_uuid_generate_from_string (buf, buf_len, NM_UTILS_UUID_TYPE_VARIANT3, NULL);
+
+	_LOGD("Implicit PvD ID is %s", uuid);
+
+	return uuid;
+}
+
 static int
 receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 {
@@ -164,6 +206,19 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	int offset, suboffset;
 	int hop_limit;
 	gboolean err;
+
+	NMRDiscPVD *ipvd, *oipvd;
+	char *ipvd_uuid;
+
+	// Initialize PvD structure
+	ipvd = (NMRDiscPVD *)g_malloc0(sizeof(*ipvd));
+
+	ipvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
+	ipvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
+	ipvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
+	ipvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
+	ipvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
+	g_array_set_clear_func (ipvd->dns_domains, pvd_dns_domain_free);
 
 	/* Router discovery is subject to the following RFC documents:
 	 *
@@ -214,6 +269,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	if (nm_rdisc_add_gateway (rdisc, &gateway))
 		changed |= NM_RDISC_CONFIG_GATEWAYS;
 
+	g_array_append_val(ipvd->gateways, gateway);
+
 	/* Addresses & Routes */
 	ndp_msg_opt_for_each_offset (offset, msg, NDP_MSG_OPT_PREFIX) {
 		NMRDiscRoute route;
@@ -228,6 +285,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			route.lifetime = ndp_msg_opt_prefix_valid_time (msg, offset);
 			if (nm_rdisc_add_route (rdisc, &route))
 				changed |= NM_RDISC_CONFIG_ROUTES;
+			g_array_append_val(ipvd->routes, route);
 		}
 
 		/* Address */
@@ -243,6 +301,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 
 				if (nm_rdisc_complete_and_add_address (rdisc, &address))
 					changed |= NM_RDISC_CONFIG_ADDRESSES;
+
+				g_array_append_val(ipvd->addresses, address);
 			}
 		}
 	}
@@ -259,6 +319,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		route.preference = translate_preference (ndp_msg_opt_route_preference (msg, offset));
 		if (nm_rdisc_add_route (rdisc, &route))
 			changed |= NM_RDISC_CONFIG_ROUTES;
+		g_array_append_val(ipvd->routes, route);
 	}
 
 	/* DNS information */
@@ -282,6 +343,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 				dns_server.lifetime = 7200;
 			if (nm_rdisc_add_dns_server (rdisc, &dns_server))
 				changed |= NM_RDISC_CONFIG_DNS_SERVERS;
+
+			g_array_append_val(ipvd->dns_servers, dns_server);
 		}
 	}
 	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_DNSSL) {
@@ -289,7 +352,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		int domain_index;
 
 		ndp_msg_opt_dnssl_for_each_domain (domain, domain_index, msg, offset) {
-			NMRDiscDNSDomain dns_domain;
+			NMRDiscDNSDomain dns_domain, *item;
 
 			memset (&dns_domain, 0, sizeof (dns_domain));
 			dns_domain.domain = domain;
@@ -304,6 +367,11 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 				dns_domain.lifetime = 7200;
 			if (nm_rdisc_add_dns_domain (rdisc, &dns_domain))
 				changed |= NM_RDISC_CONFIG_DNS_DOMAINS;
+
+			g_array_append_val (ipvd->dns_domains, dns_domain);
+			item = &g_array_index (ipvd->dns_domains, NMRDiscDNSDomain,
+					ipvd->dns_domains->len - 1);
+			item->domain = g_strdup (domain);
 		}
 	}
 
@@ -319,6 +387,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		if (mtu >= 1280) {
 			rdisc->mtu = mtu;
 			changed |= NM_RDISC_CONFIG_MTU;
+			ipvd->mtu = mtu;
 		} else {
 			/* All sorts of bad things would happen if we accepted this.
 			 * Kernel would set it, but would flush out all IPv6 addresses away
@@ -326,6 +395,32 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			 * listen for further RAs that could fix the MTU. */
 			_LOGW ("MTU too small for IPv6 ignored: %d", mtu);
 		}
+	}
+
+	ipvd_uuid = pvd_generate_uuid(rdisc, ipvd);
+	strncpy(ipvd->uuid, ipvd_uuid, 36);
+	g_free(ipvd_uuid);
+
+	ipvd->pvd_type = NDP_PVDID_TYPE_UUID;
+
+	_LOGD("Received implicit PvD");
+	pvd_dump(rdisc, ipvd);
+
+	oipvd = (NMRDiscPVD *)g_hash_table_lookup(rdisc->pvds, ipvd);
+	if (!oipvd) {
+		_LOGD("Received new PvD");
+
+		g_hash_table_insert(rdisc->pvds, ipvd, ipvd);
+	} else {
+		_LOGD("Received existing PvD");
+
+		g_array_unref(ipvd->gateways);
+		g_array_unref(ipvd->addresses);
+		g_array_unref(ipvd->routes);
+		g_array_unref(ipvd->dns_servers);
+		g_array_unref(ipvd->dns_domains);
+
+		g_free(ipvd);
 	}
 
 	/* PvD Container option */
