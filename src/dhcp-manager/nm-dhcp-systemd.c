@@ -51,7 +51,6 @@ typedef struct {
 	struct sd_dhcp6_client *client6;
 	char *lease_file;
 
-	guint timeout_id;
 	guint request_count;
 
 	gboolean privacy;
@@ -517,7 +516,7 @@ get_arp_type (const GByteArray *hwaddr)
 	else if (hwaddr->len == INFINIBAND_ALEN)
 		return ARPHRD_INFINIBAND;
 	else
-		g_assert_not_reached ();
+		return ARPHRD_NONE;
 }
 
 static gboolean
@@ -534,6 +533,7 @@ ip4_start (NMDhcpClient *client, const char *dhcp_anycast_addr, const char *last
 	const char *hostname, *fqdn;
 	int r, i;
 	gboolean success = FALSE;
+	guint16 arp_type;
 
 	g_assert (priv->client4 == NULL);
 	g_assert (priv->client6 == NULL);
@@ -555,10 +555,16 @@ ip4_start (NMDhcpClient *client, const char *dhcp_anycast_addr, const char *last
 
 	hwaddr = nm_dhcp_client_get_hw_addr (client);
 	if (hwaddr) {
+		arp_type= get_arp_type (hwaddr);
+		if (arp_type == ARPHRD_NONE) {
+			nm_log_warn (LOGD_DHCP4, "(%s): failed to determine ARP type", iface);
+			goto error;
+		}
+
 		r = sd_dhcp_client_set_mac (priv->client4,
 		                            hwaddr->data,
 		                            hwaddr->len,
-		                            get_arp_type (hwaddr));
+		                            arp_type);
 		if (r < 0) {
 			nm_log_warn (LOGD_DHCP4, "(%s): failed to set DHCP MAC address (%d)", iface, r);
 			goto error;
@@ -660,6 +666,8 @@ ip4_start (NMDhcpClient *client, const char *dhcp_anycast_addr, const char *last
 		nm_log_warn (LOGD_DHCP4, "(%s): failed to start DHCP (%d)", iface, r);
 		goto error;
 	}
+
+	nm_dhcp_client_start_timeout (client);
 
 	success = TRUE;
 
@@ -807,10 +815,13 @@ stop (NMDhcpClient *client, gboolean release, const GByteArray *duid)
 	NMDhcpSystemdPrivate *priv = NM_DHCP_SYSTEMD_GET_PRIVATE (client);
 	int r = 0;
 
-	if (priv->client4)
+	if (priv->client4) {
+		sd_dhcp_client_set_callback (priv->client4, NULL, NULL);
 		r = sd_dhcp_client_stop (priv->client4);
-	else if (priv->client6)
+	} else if (priv->client6) {
+		sd_dhcp6_client_set_callback (priv->client6, NULL, NULL);
 		r = sd_dhcp6_client_stop (priv->client6);
+	}
 
 	if (r) {
 		nm_log_warn (priv->client6 ? LOGD_DHCP6 : LOGD_DHCP4,
