@@ -160,12 +160,6 @@ pvd_generate_uuid (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	gssize buf_len = 0;
 	int i;
 
-	for (i = 0; i < pvd->gateways->len; i++) {
-		NMRDiscGateway *gateway = &g_array_index (pvd->gateways, NMRDiscGateway, i);
-
-		memcpy(buf + buf_len, &gateway->address, sizeof(gateway->address));
-		buf_len += sizeof(gateway->address);
-	}
 	for (i = 0; i < pvd->routes->len; i++) {
 		NMRDiscRoute *route = &g_array_index (pvd->routes, NMRDiscRoute, i);
 
@@ -451,6 +445,18 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		pvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
 		pvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
 		g_array_set_clear_func (pvd->dns_domains, pvd_dns_domain_free);
+
+		/*
+		 * Add current gateway
+		 *
+		 * TODO: Note that we do not currently support the case in which there are
+		 * two or more routers on the network announcing the same prefixes and
+		 * routes. This was the "problem" even before the introduction of PvDs.
+		 * Namely, each address created and added to a list of addresses has also
+		 * a gateway information, so it's not possible to have two gateways for a
+		 * single route.
+		 */
+		g_array_append_val(pvd->gateways, gateway);
 
 		/* MTU */
 		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
