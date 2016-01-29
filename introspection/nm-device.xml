@@ -168,6 +168,11 @@
         if one of their AvailableConnections was activated.
       </tp:docstring>
     </property>
+    <property name="ProvisioningDomains" type="ao" access="read">
+      <tp:docstring>
+        List of provisioning domains received through the interface.
+      </tp:docstring>
+    </property>
 
     <method name="Reapply">
       <arg name="connection" type="a{sa{sv}}" direction="in">

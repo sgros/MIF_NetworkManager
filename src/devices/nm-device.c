@@ -133,6 +133,7 @@ enum {
 	PROP_LLDP_NEIGHBORS,
 	PROP_REAL,
 	PROP_SLAVES,
+	PROP_PVDS,
 	LAST_PROP
 };
 
@@ -5803,10 +5804,8 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
 
 			pvd = g_hash_table_lookup(priv->pvds, &value->pvdid);
-			if (!pvd) {
-				printf("\n\n\n\nNEW PVD\n\n\n\n\n");
+			if (!pvd)
 				pvd = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
-			}
 
 			/*
 			 * Initialize new pvd
@@ -11306,6 +11305,31 @@ get_property (GObject *object, guint prop_id,
 		slave_list[i] = NULL;
 		g_value_take_boxed (value, slave_list);
 		break;
+        }
+	case PROP_PVDS: {
+		char **pvd_list;
+		guint i, len;
+		PVDID * key;
+		NMIP6Config * val;
+
+		len = priv->pvds ? g_hash_table_size (priv->pvds) : 0;
+
+		pvd_list = g_new (char *, len + 1);
+		i = 0;
+
+		if (priv->pvds) {
+			g_hash_table_iter_init (&iter, priv->pvds);
+			while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&val)) {
+				const char *path;
+
+				path = nm_exported_object_get_path (NM_EXPORTED_OBJECT (val));
+				if (path)
+					pvd_list[i++] = g_strdup(path);
+			}
+		}
+		pvd_list[i] = NULL;
+		g_value_take_boxed (value, pvd_list);
+		break;
 	}
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -11616,6 +11640,13 @@ nm_device_class_init (NMDeviceClass *klass)
 	g_object_class_install_property
 	    (object_class, PROP_SLAVES,
 	     g_param_spec_boxed (NM_DEVICE_SLAVES, "", "",
+	                         G_TYPE_STRV,
+	                         G_PARAM_READABLE |
+	                         G_PARAM_STATIC_STRINGS));
+
+	g_object_class_install_property
+	    (object_class, PROP_PVDS,
+	     g_param_spec_boxed (NM_DEVICE_PVDS, "", "",
 	                         G_TYPE_STRV,
 	                         G_PARAM_READABLE |
 	                         G_PARAM_STATIC_STRINGS));
