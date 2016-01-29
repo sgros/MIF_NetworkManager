@@ -63,6 +63,19 @@ const NMUtilsDNSOptionDesc _nm_utils_dns_option_descs[] = {
 	{ NULL,                                        FALSE,   FALSE }
 };
 
+static int
+_addr_size (int family)
+{
+	switch (family) {
+	case AF_INET:
+		return sizeof (in_addr_t);
+	case AF_INET6:
+		return sizeof (struct in6_addr);
+	default:
+		g_return_val_if_reached (0);
+	}
+}
+
 static char *
 canonicalize_ip (int family, const char *ip, gboolean null_any)
 {
@@ -70,20 +83,46 @@ canonicalize_ip (int family, const char *ip, gboolean null_any)
 	char addr_str[NM_UTILS_INET_ADDRSTRLEN];
 	int ret;
 
-	if (!ip)
-		return NULL;
+	if (!ip) {
+		if (null_any)
+			return NULL;
+		if (family == AF_INET)
+			return g_strdup ("0.0.0.0");
+		if (family == AF_INET6)
+			return g_strdup ("::");
+		g_return_val_if_reached (NULL);
+	}
 
 	ret = inet_pton (family, ip, addr_bytes);
 	g_return_val_if_fail (ret == 1, NULL);
 
 	if (null_any) {
-		int addrlen = (family == AF_INET ? sizeof (struct in_addr) : sizeof (struct in6_addr));
-
-		if (!memcmp (addr_bytes, &in6addr_any, addrlen))
+		if (!memcmp (addr_bytes, &in6addr_any, _addr_size (family)))
 			return NULL;
 	}
 
 	return g_strdup (inet_ntop (family, addr_bytes, addr_str, sizeof (addr_str)));
+}
+
+static char *
+canonicalize_ip_binary (int family, gconstpointer ip, gboolean null_any)
+{
+	char string[NM_UTILS_INET_ADDRSTRLEN];
+
+	if (!ip) {
+		if (null_any)
+			return NULL;
+		if (family == AF_INET)
+			return g_strdup ("0.0.0.0");
+		if (family == AF_INET6)
+			return g_strdup ("::");
+		g_return_val_if_reached (NULL);
+	}
+	if (null_any) {
+		if (!memcmp (ip, &in6addr_any, _addr_size (family)))
+			return NULL;
+	}
+	return g_strdup (inet_ntop (family, ip, string, sizeof (string)));
 }
 
 static gboolean
@@ -567,6 +606,7 @@ nm_ip_route_new (int family,
 	NMIPRoute *route;
 
 	g_return_val_if_fail (family == AF_INET || family == AF_INET6, NULL);
+	g_return_val_if_fail (dest, NULL);
 
 	if (!valid_ip (family, dest, error))
 		return NULL;
@@ -613,7 +653,6 @@ nm_ip_route_new_binary (int family,
                         GError **error)
 {
 	NMIPRoute *route;
-	char string[NM_UTILS_INET_ADDRSTRLEN];
 
 	g_return_val_if_fail (family == AF_INET || family == AF_INET6, NULL);
 	g_return_val_if_fail (dest, NULL);
@@ -627,10 +666,9 @@ nm_ip_route_new_binary (int family,
 	route->refcount = 1;
 
 	route->family = family;
-	route->dest = g_strdup (inet_ntop (family, dest, string, sizeof (string)));
+	route->dest = canonicalize_ip_binary (family, dest, FALSE);
 	route->prefix = prefix;
-	if (next_hop)
-		route->next_hop = g_strdup (inet_ntop (family, next_hop, string, sizeof (string)));
+	route->next_hop = canonicalize_ip_binary (family, next_hop, TRUE);
 	route->metric = metric;
 
 	return route;
@@ -783,17 +821,11 @@ void
 nm_ip_route_set_dest (NMIPRoute *route,
                       const char *dest)
 {
-	char *new_dest;
-
 	g_return_if_fail (route != NULL);
-	g_return_if_fail (dest != NULL);
 	g_return_if_fail (nm_utils_ipaddr_valid (route->family, dest));
 
-	new_dest = canonicalize_ip (route->family, dest, FALSE);
-	g_return_if_fail (new_dest);
-
 	g_free (route->dest);
-	route->dest = new_dest;
+	route->dest = canonicalize_ip (route->family, dest, FALSE);
 }
 
 /**
@@ -934,8 +966,7 @@ nm_ip_route_get_next_hop_binary (NMIPRoute *route,
 		inet_pton (route->family, route->next_hop, next_hop);
 		return TRUE;
 	} else {
-		memset (next_hop, 0,
-		        route->family == AF_INET ? sizeof (struct in_addr) : sizeof (struct in6_addr));
+		memset (next_hop, 0, _addr_size (route->family));
 		return FALSE;
 	}
 }
@@ -954,15 +985,10 @@ void
 nm_ip_route_set_next_hop_binary (NMIPRoute *route,
                                  gconstpointer next_hop)
 {
-	char string[NM_UTILS_INET_ADDRSTRLEN];
-
 	g_return_if_fail (route != NULL);
 
 	g_free (route->next_hop);
-	if (next_hop)
-		route->next_hop = g_strdup (inet_ntop (route->family, next_hop, string, sizeof (string)));
-	else
-		route->next_hop = NULL;
+	route->next_hop = canonicalize_ip_binary (route->family, next_hop, TRUE);
 }
 
 /**
@@ -2309,7 +2335,7 @@ set_property (GObject *object, guint prop_id,
 		gateway = g_value_get_string (value);
 		g_return_if_fail (!gateway || nm_utils_ipaddr_valid (NM_SETTING_IP_CONFIG_GET_FAMILY (setting), gateway));
 		g_free (priv->gateway);
-		priv->gateway = canonicalize_ip (NM_SETTING_IP_CONFIG_GET_FAMILY (setting), gateway, FALSE);
+		priv->gateway = canonicalize_ip (NM_SETTING_IP_CONFIG_GET_FAMILY (setting), gateway, TRUE);
 		break;
 	case PROP_ROUTES:
 		g_ptr_array_unref (priv->routes);
