@@ -203,6 +203,17 @@
       </tp:docstring>
     </method>
 
+    <method name="GetProvisioningDomains">
+      <tp:docstring>
+        Get the list of provisioning domains obtained through the device.
+      </tp:docstring>
+      <arg name="pvds" type="ao" direction="out">
+        <tp:docstring>
+          List of object paths of provisioning domains known to the device.
+        </tp:docstring>
+      </arg>
+    </method>
+
     <signal name="StateChanged">
       <arg name="new_state" type="u" tp:type="NM_DEVICE_STATE">
         <tp:docstring>

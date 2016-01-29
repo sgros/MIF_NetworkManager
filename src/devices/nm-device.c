@@ -7626,6 +7626,40 @@ impl_device_delete (NMDevice *self, GDBusMethodInvocation *context)
 	               NULL);
 }
 
+static void
+impl_device_get_pvds (NMDevice *self, GDBusMethodInvocation *context)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+
+	gs_free const char **paths = NULL;
+	guint i, len;
+	GHashTableIter iter;
+	PVDID * key;
+	NMIP6Config * value;
+
+	if (priv->pvds)
+		len = g_hash_table_size (priv->pvds);
+	else
+		len = 0;
+
+	paths = g_new (const char *, len + 1);
+	i = 0;
+
+	if (priv->pvds) {
+		g_hash_table_iter_init (&iter, priv->pvds);
+		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
+			const char *path;
+
+			path = nm_exported_object_get_path (NM_EXPORTED_OBJECT (value));
+			paths[i++] = path;
+		}
+	}
+	paths[i++] = NULL;
+
+	g_dbus_method_invocation_return_value (context,
+					g_variant_new ("(^ao)", (char **) paths));
+}
+
 static gboolean
 _device_activate (NMDevice *self, NMActRequest *req)
 {
@@ -11659,5 +11693,6 @@ nm_device_class_init (NMDeviceClass *klass)
 	                                        "Reapply", impl_device_reapply,
 	                                        "Disconnect", impl_device_disconnect,
 	                                        "Delete", impl_device_delete,
+	                                        "GetProvisioningDomains", impl_device_get_pvds,
 	                                        NULL);
 }
