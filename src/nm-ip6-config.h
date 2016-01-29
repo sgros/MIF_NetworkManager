@@ -23,6 +23,8 @@
 
 #include <netinet/in.h>
 
+#include <ndp.h>
+
 #include "nm-exported-object.h"
 #include "nm-setting-ip6-config.h"
 
@@ -46,6 +48,8 @@ typedef struct {
 	NMExportedObjectClass parent;
 } NMIP6ConfigClass;
 
+typedef struct _pvdid PVDID;
+
 /* internal */
 #define NM_IP6_CONFIG_IFINDEX "ifindex"
 
@@ -57,6 +61,7 @@ typedef struct {
 #define NM_IP6_CONFIG_DOMAINS "domains"
 #define NM_IP6_CONFIG_SEARCHES "searches"
 #define NM_IP6_CONFIG_DNS_OPTIONS "dns-options"
+#define NM_IP6_CONFIG_PVD_ID "pvd--id"
 
 /* deprecated */
 #define NM_IP6_CONFIG_ADDRESSES "addresses"
@@ -141,6 +146,14 @@ const char * nm_ip6_config_get_dns_option (const NMIP6Config *config, guint i);
 /* MSS */
 void nm_ip6_config_set_mss (NMIP6Config *config, guint32 mss);
 guint32 nm_ip6_config_get_mss (const NMIP6Config *config);
+
+/* PvD ID */
+void nm_ip6_config_set_pvdid (NMIP6Config *config, PVDID *pvdid);
+PVDID * nm_ip6_config_get_pvdid (const NMIP6Config *config);
+
+/* PvD functions */
+guint nm_ip6_config_pvd_hash (gconstpointer key);
+gboolean nm_ip6_config_pvd_cmp(gconstpointer a, gconstpointer b);
 
 void nm_ip6_config_hash (const NMIP6Config *config, GChecksum *sum, gboolean dns_only);
 gboolean nm_ip6_config_equal (const NMIP6Config *a, const NMIP6Config *b);

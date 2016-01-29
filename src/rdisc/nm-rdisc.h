@@ -91,15 +91,20 @@ typedef struct {
 	guint32 lifetime;
 } NMRDiscDNSDomain;
 
-typedef struct {
-
-	enum ndp_pvdid_type pvd_type;
-	int pvd_len;
-
+/*
+ * TODO: The same structure is defined in src/nm-ip6-config.h too!
+ */
+typedef struct _pvdid {
+	enum ndp_pvdid_type type;
+	guint8 len;
 	union {
-		// Note this MUST be a NULL terminated UUID
 		char uuid[37];
 	};
+} PVDID;
+
+typedef struct {
+
+	PVDID pvdid;
 
 	GArray *gateways;
 	GArray *addresses;
@@ -118,6 +123,7 @@ typedef enum {
 	NM_RDISC_CONFIG_DNS_DOMAINS                         = 1 << 5,
 	NM_RDISC_CONFIG_HOP_LIMIT                           = 1 << 6,
 	NM_RDISC_CONFIG_MTU                                 = 1 << 7,
+	NM_RDISC_CONFIG_PVD                                 = 1 << 8,
 } NMRDiscConfigMap;
 
 #define NM_RDISC_MAX_ADDRESSES_DEFAULT 16

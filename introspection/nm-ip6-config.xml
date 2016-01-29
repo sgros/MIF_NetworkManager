@@ -55,6 +55,10 @@
       </tp:docstring>
     </property>
 
+    <property name="PVD_ID" type="s" access="read">
+      <tp:docstring>PvD ID of a connection.</tp:docstring>
+    </property>
+
     <signal name="PropertiesChanged">
       <arg name="properties" type="a{sv}" tp:type="String_Variant_Map">
         <tp:docstring>

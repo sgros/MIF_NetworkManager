@@ -24,6 +24,8 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+#include <ndp.h>
+
 #include "nm-default.h"
 #include "nm-ip6-config.h"
 
@@ -35,6 +37,18 @@
 #include "nm-macros-internal.h"
 
 #include "nmdbus-ip6-config.h"
+
+/*
+ * TODO: The same structure is defined in src/rdisc/nm-rdisc.h too!
+ */
+struct _pvdid {
+	enum ndp_pvdid_type type;
+	guint8 len;
+	union {
+		char uuid[37];
+	};
+};
+
 
 G_DEFINE_TYPE (NMIP6Config, nm_ip6_config, NM_TYPE_EXPORTED_OBJECT)
 
@@ -52,6 +66,8 @@ typedef struct _NMIP6ConfigPrivate {
 	guint32 mss;
 	int ifindex;
 	gint64 route_metric;
+
+	PVDID pvdid;
 } NMIP6ConfigPrivate;
 
 
@@ -66,6 +82,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMIP6Config,
 	PROP_DOMAINS,
 	PROP_SEARCHES,
 	PROP_DNS_OPTIONS,
+	PROP_PVD_ID,
 );
 
 NMIP6Config *
@@ -1759,6 +1776,60 @@ nm_ip6_config_get_mss (const NMIP6Config *config)
 
 /******************************************************************/
 
+void
+nm_ip6_config_set_pvdid (NMIP6Config *config, PVDID *pvdid)
+{
+	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
+
+	switch(pvdid->type) {
+	case NDP_PVDID_TYPE_UUID:
+		priv->pvdid.type = pvdid->type;
+		strncpy(priv->pvdid.uuid, pvdid->uuid, 36);
+	default:
+		break;
+	}
+}
+
+PVDID *
+nm_ip6_config_get_pvdid (const NMIP6Config *config)
+{
+	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
+
+	return &priv->pvdid;
+}
+
+guint
+nm_ip6_config_pvd_hash (gconstpointer key)
+{
+	PVDID *pvdid = (PVDID *)key;
+
+	switch(pvdid->type) {
+	case NDP_PVDID_TYPE_UUID:
+		return g_str_hash(pvdid->uuid);
+	}
+
+	return 0;
+}
+
+gboolean
+nm_ip6_config_pvd_cmp(gconstpointer a, gconstpointer b)
+{
+	PVDID *pvdid_a = (PVDID *)a;
+	PVDID *pvdid_b = (PVDID *)b;
+
+	if (pvdid_a->type != pvdid_a->type)
+		return FALSE;
+
+	switch(pvdid_a->type) {
+	case NDP_PVDID_TYPE_UUID:
+		return g_str_equal(pvdid_a->uuid, pvdid_b->uuid);
+	}
+
+	return FALSE;
+}
+
+/******************************************************************/
+
 static inline void
 hash_u32 (GChecksum *sum, guint32 n)
 {
@@ -2060,6 +2131,12 @@ get_property (GObject *object, guint prop_id,
 	case PROP_DNS_OPTIONS:
 		nm_utils_g_value_set_strv (value, priv->dns_options);
 		break;
+	case PROP_PVD_ID:
+		if (priv->pvdid.type == NDP_PVDID_TYPE_UUID)
+			g_value_set_string (value, priv->pvdid.uuid);
+		else
+			g_value_set_string (value, NULL);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -2157,6 +2234,12 @@ nm_ip6_config_class_init (NMIP6ConfigClass *config_class)
 		                    G_TYPE_STRV,
 		                    G_PARAM_READABLE |
 		                    G_PARAM_STATIC_STRINGS);
+
+	obj_properties[PROP_PVD_ID] =
+		g_param_spec_string (NM_IP6_CONFIG_PVD_ID, "", "",
+		                     NULL,
+		                     G_PARAM_READABLE |
+		                     G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 

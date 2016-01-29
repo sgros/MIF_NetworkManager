@@ -110,13 +110,13 @@ pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	int i;
 	char addrstr[INET6_ADDRSTRLEN];
 
-	switch(pvd->pvd_type) {
+	switch(pvd->pvdid.type) {
 	case NDP_PVDID_TYPE_UUID:
-		_LOGD ("PvD_ID type=%u id=%s", pvd->pvd_type, pvd->uuid);
+		_LOGD ("PvD_ID type=%u id=%s", pvd->pvdid.type, pvd->pvdid.uuid);
 		break;
 
 	default:
-		_LOGW ("received unrecognized PvD ID type %u", pvd->pvd_type);
+		_LOGW ("received unrecognized PvD ID type %u", pvd->pvdid.type);
 		break;
 	}
 
@@ -153,6 +153,10 @@ pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	}
 }
 
+/*
+ * TODO: There is a function nm_ip6_config_hash() that might be used
+ * instead of this one.
+ */
 static char *
 pvd_generate_uuid (NMRDisc *rdisc, NMRDiscPVD *pvd)
 {
@@ -391,18 +395,25 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	}
 
 	pvd_uuid = pvd_generate_uuid(rdisc, pvd);
-	strncpy(pvd->uuid, pvd_uuid, 36);
+	strncpy(pvd->pvdid.uuid, pvd_uuid, 36);
 	g_free(pvd_uuid);
 
-	pvd->pvd_type = NDP_PVDID_TYPE_UUID;
+	pvd->pvdid.type = NDP_PVDID_TYPE_UUID;
 
 	_LOGD("Received implicit PvD");
 	pvd_dump(rdisc, pvd);
 
 	if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
-		_LOGD("Received new PvD");
+		_LOGD("Received new implicit PvD");
 	else
-		_LOGD("Received existing PvD");
+		_LOGD("Received existing implicit PvD");
+
+	/*
+	 * If something changed in RA then it certainly changed something
+	 * in PvD, too.
+	 */
+	if (changed)
+		changed |= NM_RDISC_CONFIG_PVD;
 
 	/* PvD Container option */
 	err = FALSE;
@@ -415,17 +426,17 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
 				NDP_MSG_OPT_PVDID, offset, NDP_MSG_OPT_PVDCO) {
 
-			pvd->pvd_type = ndp_msg_opt_pvdid_type(msg, suboffset);
-			pvd->pvd_len = ndp_msg_opt_pvdid_len(msg, suboffset);
+			pvd->pvdid.type = ndp_msg_opt_pvdid_type(msg, suboffset);
+			pvd->pvdid.len = ndp_msg_opt_pvdid_len(msg, suboffset);
 
-			switch(pvd->pvd_type) {
+			switch(pvd->pvdid.type) {
 			case NDP_PVDID_TYPE_UUID:
-				memcpy(pvd->uuid, ndp_msg_opt_pvdid(msg, suboffset), pvd->pvd_len);
-				pvd->uuid[pvd->pvd_len + 1] = 0;
+				memcpy(pvd->pvdid.uuid, ndp_msg_opt_pvdid(msg, suboffset), pvd->pvdid.len);
+				pvd->pvdid.uuid[pvd->pvdid.len + 1] = 0;
 				break;
 
 			default:
-				_LOGW ("received unrecognized PvD ID type %u, skipping PvD CO", pvd->pvd_type);
+				_LOGW ("received unrecognized PvD ID type %u, skipping PvD CO", pvd->pvdid.type);
 				err = true;
 				break;
 			}
@@ -580,9 +591,15 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		pvd_dump(rdisc, pvd);
 
 		if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
-			_LOGD("Received new PvD");
+			_LOGD("Received new explicit PvD");
 		else
-			_LOGD("Received existing PvD");
+			_LOGD("Received existing explicit PvD");
+
+		/*
+		 * Mark that PvD changed (TODO: Maybe it isn't, like it
+		 * might happen in RA!)
+		 */
+		changed |= NM_RDISC_CONFIG_PVD;
 	}
 
 	nm_rdisc_ra_received (rdisc, now, changed);

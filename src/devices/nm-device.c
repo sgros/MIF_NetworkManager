@@ -380,6 +380,12 @@ typedef struct _NMDevicePrivate {
 	NMLldpListener *lldp_listener;
 
 	guint check_delete_unrealized_id;
+
+	/* Hash table of all PvDs received via device. The key to
+         * the table is PVDID structure, while the value is object
+         * nm_ip6_config.
+         */
+	GHashTable * pvds;
 } NMDevicePrivate;
 
 static gboolean nm_device_set_ip4_config (NMDevice *self,
@@ -5780,6 +5786,122 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 
 	if (changed & NM_RDISC_CONFIG_MTU)
 		priv->ip6_mtu = rdisc->mtu;
+
+	if (changed & NM_RDISC_CONFIG_PVD) {
+		NMIP6Config *pvd;
+		GHashTableIter iter;
+		PVDID * key;
+		NMRDiscPVD * value;
+
+		// TODO: Removal of elements in the table has to be solved!
+		if (!priv->pvds)
+			priv->pvds = g_hash_table_new(nm_ip6_config_pvd_hash,
+							nm_ip6_config_pvd_cmp);
+
+		g_hash_table_iter_init (&iter, rdisc->pvds);
+		pvd = NULL;
+		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
+
+			pvd = g_hash_table_lookup(priv->pvds, &value->pvdid);
+			if (!pvd) {
+				printf("\n\n\n\nNEW PVD\n\n\n\n\n");
+				pvd = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
+			}
+
+			/*
+			 * Initialize new pvd
+			 */
+
+			/* Set PVD ID of a new key */
+			nm_ip6_config_set_pvdid(pvd, &value->pvdid);
+
+			/* Use the first gateway as ordered in router discovery cache. */
+			if (value->gateways->len) {
+				NMRDiscGateway *gateway = &g_array_index (value->gateways, NMRDiscGateway, 0);
+
+				nm_ip6_config_set_gateway (pvd, &gateway->address);
+			} else
+				nm_ip6_config_set_gateway (pvd, NULL);
+
+			// TODO: Use changed variable as above so that data structure
+			// building is faster!
+
+
+			/* Rebuild address list from router discovery cache. */
+			nm_ip6_config_reset_addresses (pvd);
+
+			/* rdisc->addresses contains at most max_addresses entries.
+			 * This is different from what the kernel does, which
+			 * also counts static and temporary addresses when checking
+			 * max_addresses.
+			 **/
+			for (i = 0; i < value->addresses->len; i++) {
+				NMRDiscAddress *discovered_address = &g_array_index (value->addresses, NMRDiscAddress, i);
+				NMPlatformIP6Address address;
+
+				memset (&address, 0, sizeof (address));
+				address.address = discovered_address->address;
+				address.plen = system_support ? 64 : 128;
+				address.timestamp = discovered_address->timestamp;
+				address.lifetime = discovered_address->lifetime;
+				address.preferred = discovered_address->preferred;
+				if (address.preferred > address.lifetime)
+					address.preferred = address.lifetime;
+				address.source = NM_IP_CONFIG_SOURCE_RDISC_PVD;
+				address.flags = ifa_flags;
+
+				nm_ip6_config_add_address (pvd, &address);
+			}
+
+			/* Rebuild route list from router discovery cache. */
+			nm_ip6_config_reset_routes (pvd);
+
+			for (i = 0; i < value->routes->len; i++) {
+				NMRDiscRoute *discovered_route = &g_array_index (value->routes, NMRDiscRoute, i);
+				NMPlatformIP6Route route;
+
+				/* Only accept non-default routes.  The router has no idea what the
+				 * local configuration or user preferences are, so sending routes
+				 * with a prefix length of 0 is quite rude and thus ignored.
+				 */
+				if (discovered_route->plen > 0) {
+					memset (&route, 0, sizeof (route));
+					route.network = discovered_route->network;
+					route.plen = discovered_route->plen;
+					route.gateway = discovered_route->gateway;
+					route.source = NM_IP_CONFIG_SOURCE_RDISC_PVD;
+					route.metric = nm_device_get_ip6_route_metric (self);
+
+					nm_ip6_config_add_route (pvd, &route);
+				}
+			}
+
+			/* Rebuild DNS server list from router discovery cache. */
+			nm_ip6_config_reset_nameservers (pvd);
+
+			for (i = 0; i < value->dns_servers->len; i++) {
+				NMRDiscDNSServer *discovered_server = &g_array_index (value->dns_servers, NMRDiscDNSServer, i);
+
+				nm_ip6_config_add_nameserver (pvd, &discovered_server->address);
+			}
+
+			/* Rebuild domain list from router discovery cache. */
+			nm_ip6_config_reset_domains (pvd);
+
+			for (i = 0; i < value->dns_domains->len; i++) {
+				NMRDiscDNSDomain *discovered_domain = &g_array_index (value->dns_domains, NMRDiscDNSDomain, i);
+
+				nm_ip6_config_add_domain (pvd, discovered_domain->domain);
+			}
+
+			dhcp6_cleanup (self, CLEANUP_TYPE_DECONFIGURE, TRUE);
+
+			g_hash_table_replace(priv->pvds, nm_ip6_config_get_pvdid(pvd), pvd);
+
+			if (!nm_exported_object_is_exported (NM_EXPORTED_OBJECT (pvd)))
+				nm_exported_object_export (NM_EXPORTED_OBJECT (pvd));
+		}
+	}
 
 	nm_device_activate_schedule_ip6_config_result (self);
 }

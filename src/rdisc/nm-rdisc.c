@@ -442,6 +442,8 @@ config_map_to_string (NMRDiscConfigMap map, char *p)
 		*p++ = 'S';
 	if (map & NM_RDISC_CONFIG_DNS_DOMAINS)
 		*p++ = 'D';
+	if (map & NM_RDISC_CONFIG_PVD)
+		*p++ = 'P';
 	*p = '\0';
 }
 
@@ -631,6 +633,8 @@ check_timestamps (NMRDisc *rdisc, guint32 now, NMRDiscConfigMap changed)
 	clean_dns_servers (rdisc, now, &changed, &nextevent);
 	clean_dns_domains (rdisc, now, &changed, &nextevent);
 
+	// TODO: Clean PvDs!
+
 	if (changed)
 		g_signal_emit_by_name (rdisc, NM_RDISC_CONFIG_CHANGED, changed);
 
@@ -679,9 +683,9 @@ pvd_hash_func(gconstpointer key)
 {
 	NMRDiscPVD *pvd = (NMRDiscPVD *)key;
 
-	switch(pvd->pvd_type) {
+	switch(pvd->pvdid.type) {
 	case NDP_PVDID_TYPE_UUID:
-		return g_str_hash(pvd->uuid);
+		return g_str_hash(pvd->pvdid.uuid);
 	}
 
 	return 0;
@@ -693,12 +697,12 @@ pvd_cmp_func(gconstpointer a, gconstpointer b)
 	NMRDiscPVD *pvd_a = (NMRDiscPVD *)a;
 	NMRDiscPVD *pvd_b = (NMRDiscPVD *)b;
 
-	if (pvd_a->pvd_type != pvd_b->pvd_type)
+	if (pvd_a->pvdid.type != pvd_b->pvdid.type)
 		return FALSE;
 
-	switch(pvd_a->pvd_type) {
+	switch(pvd_a->pvdid.type) {
 	case NDP_PVDID_TYPE_UUID:
-		return g_str_equal(pvd_a->uuid, pvd_b->uuid);
+		return g_str_equal(pvd_a->pvdid.uuid, pvd_b->pvdid.uuid);
 	}
 
 	return FALSE;
