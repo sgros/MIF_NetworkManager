@@ -472,6 +472,17 @@ device_metered_changed (GObject *object,
 	g_signal_emit (self, signals[DEVICE_METERED_CHANGED], 0, nm_device_get_metered (device));
 }
 
+static void
+device_pvd_changed (GObject *object,
+                        GParamSpec *pspec,
+                        gpointer user_data)
+{
+	NMActiveConnection *self = (NMActiveConnection *) user_data;
+
+	g_return_if_fail (NM_IS_ACTIVE_CONNECTION (self));
+	g_object_notify (G_OBJECT (self), NM_ACTIVE_CONNECTION_PVDS);
+}
+
 gboolean
 nm_active_connection_set_device (NMActiveConnection *self, NMDevice *device)
 {
@@ -508,6 +519,8 @@ nm_active_connection_set_device (NMActiveConnection *self, NMDevice *device)
 		                  G_CALLBACK (device_master_changed), self);
 		g_signal_connect (device, "notify::" NM_DEVICE_METERED,
 		                  G_CALLBACK (device_metered_changed), self);
+		g_signal_connect (device, "notify::" NM_DEVICE_PVDS,
+		                  G_CALLBACK (device_pvd_changed), self);
 
 		if (!priv->assumed) {
 			priv->pending_activation_id = g_strdup_printf ("activation::%p", (void *)self);
@@ -960,6 +973,7 @@ _device_cleanup (NMActiveConnection *self)
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_state_changed), self);
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_master_changed), self);
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_metered_changed), self);
+		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_pvd_changed), self);
 	}
 
 	if (priv->pending_activation_id) {
