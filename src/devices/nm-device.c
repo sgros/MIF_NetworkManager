@@ -5793,19 +5793,24 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		GHashTableIter iter;
 		PVDID * key;
 		NMRDiscPVD * value;
+		gboolean notify = FALSE;
 
 		// TODO: Removal of elements in the table has to be solved!
-		if (!priv->pvds)
+		if (!priv->pvds) {
 			priv->pvds = g_hash_table_new(nm_ip6_config_pvd_hash,
 							nm_ip6_config_pvd_cmp);
+			notify = TRUE;
+		}
 
 		g_hash_table_iter_init (&iter, rdisc->pvds);
 		pvd = NULL;
 		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
 
 			pvd = g_hash_table_lookup(priv->pvds, &value->pvdid);
-			if (!pvd)
+			if (!pvd) {
 				pvd = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
+				notify = TRUE;
+			}
 
 			/*
 			 * Initialize new pvd
@@ -5900,6 +5905,9 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 			if (!nm_exported_object_is_exported (NM_EXPORTED_OBJECT (pvd)))
 				nm_exported_object_export (NM_EXPORTED_OBJECT (pvd));
 		}
+
+		if (notify)
+			g_object_notify (G_OBJECT (self), NM_DEVICE_PVDS);
 	}
 
 	nm_device_activate_schedule_ip6_config_result (self);

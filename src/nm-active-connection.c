@@ -82,6 +82,7 @@ enum {
 	PROP_DEFAULT6,
 	PROP_IP6_CONFIG,
 	PROP_DHCP6_CONFIG,
+	PROP_PVDS,
 	PROP_VPN,
 	PROP_MASTER,
 
@@ -870,7 +871,7 @@ get_property (GObject *object, guint prop_id,
               GValue *value, GParamSpec *pspec)
 {
 	NMActiveConnectionPrivate *priv = NM_ACTIVE_CONNECTION_GET_PRIVATE (object);
-	GPtrArray *devices;
+	GPtrArray *devices, *pvds;
 	NMDevice *master_device = NULL;
 
 	switch (prop_id) {
@@ -924,6 +925,11 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_DHCP6_CONFIG:
 		g_value_set_string (value, "/");
+		break;
+	case PROP_PVDS:
+		pvds = g_ptr_array_sized_new (1);
+		g_ptr_array_add (pvds, NULL);
+		g_value_take_boxed (value, (char **) g_ptr_array_free (pvds, FALSE));
 		break;
 	case PROP_VPN:
 		g_value_set_boolean (value, priv->vpn);
@@ -1105,6 +1111,13 @@ nm_active_connection_class_init (NMActiveConnectionClass *ac_class)
 		                      NULL,
 		                      G_PARAM_READABLE |
 		                      G_PARAM_STATIC_STRINGS));
+
+	g_object_class_install_property
+		(object_class, PROP_PVDS,
+		 g_param_spec_boxed (NM_ACTIVE_CONNECTION_PVDS, "", "",
+		                     G_TYPE_STRV,
+		                     G_PARAM_READABLE |
+		                     G_PARAM_STATIC_STRINGS));
 
 	g_object_class_install_property
 		(object_class, PROP_VPN,

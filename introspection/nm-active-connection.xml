@@ -94,6 +94,11 @@
         state.
       </tp:docstring>
     </property>
+    <property name="ProvisioningDomains" type="ao" access="read">
+      <tp:docstring>
+        List of provisioning domains received through this connection.
+      </tp:docstring>
+    </property>
     <property name="Vpn" type="b" access="read">
       <tp:docstring>
         Whether this active connection is also a VPN connection.

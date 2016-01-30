@@ -45,6 +45,7 @@
 #define NM_ACTIVE_CONNECTION_DEFAULT6        "default6"
 #define NM_ACTIVE_CONNECTION_IP6_CONFIG      "ip6-config"
 #define NM_ACTIVE_CONNECTION_DHCP6_CONFIG    "dhcp6-config"
+#define NM_ACTIVE_CONNECTION_PVDS            "provisioning-domains"
 #define NM_ACTIVE_CONNECTION_VPN             "vpn"
 #define NM_ACTIVE_CONNECTION_MASTER          "master"
 
