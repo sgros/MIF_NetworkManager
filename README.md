@@ -1,6 +1,6 @@
 # PvD and network namespace aware NetworkManager
 
-**WARNING: This is a very alpha quality code! Use on your onw risk!**
+**WARNING: This is a very alpha quality code! Use on your own risk!**
 
 This is a fork of [NetworkManager](http://cgit.freedesktop.org/NetworkManager/NetworkManager/tree/)
 with added support for provisioning domains as defined by [IETF MIF working group](https://datatracker.ietf.org/wg/mif/charter/).
@@ -17,7 +17,7 @@ In order to test this code you'll need:
 
 ## TODO
 
-The following items are on a todo list:
+The following items are on a todo list (in a random order):
 
 1. Add basic network namespace support
 
@@ -26,3 +26,9 @@ The following items are on a todo list:
 3. Teach `nmcli` to manipulate provisioning domains
 
 4. Add PvD for IPv4
+
+5. Teach `nmcli` to manipulate network namesapces.
+
+6. Add Python examples that use provisioning domains.
+
+7. Add Python examples that use network name spaces.
