@@ -61,7 +61,7 @@ typedef struct _pvdid PVDID;
 #define NM_IP6_CONFIG_DOMAINS "domains"
 #define NM_IP6_CONFIG_SEARCHES "searches"
 #define NM_IP6_CONFIG_DNS_OPTIONS "dns-options"
-#define NM_IP6_CONFIG_PVD_ID "pvd--id"
+#define NM_IP6_CONFIG_PVD_ID "provisioning-domain-id"
 
 /* deprecated */
 #define NM_IP6_CONFIG_ADDRESSES "addresses"
