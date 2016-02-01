@@ -5795,7 +5795,6 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		NMRDiscPVD * value;
 		gboolean notify = FALSE;
 
-		// TODO: Removal of elements in the table has to be solved!
 		if (!priv->pvds) {
 			priv->pvds = g_hash_table_new(nm_ip6_config_pvd_hash,
 							nm_ip6_config_pvd_cmp);
@@ -5904,6 +5903,23 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 
 			if (!nm_exported_object_is_exported (NM_EXPORTED_OBJECT (pvd)))
 				nm_exported_object_export (NM_EXPORTED_OBJECT (pvd));
+		}
+
+		/*
+		 * Iterate over existing PvDs to check if they are still
+		 * present. Remove the ones that are not!
+		 */
+		g_hash_table_iter_init (&iter, priv->pvds);
+		pvd = NULL;
+		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
+
+			pvd = g_hash_table_lookup(rdisc->pvds, &value->pvdid);
+			if (!pvd) {
+				// TODO: Check if the PvD is properly released!
+				g_hash_table_remove(priv->pvds, value);
+				notify = TRUE;
+			}
+
 		}
 
 		if (notify)

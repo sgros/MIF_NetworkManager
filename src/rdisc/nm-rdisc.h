@@ -105,7 +105,6 @@ typedef struct _pvdid {
 } PVDID;
 
 typedef struct {
-
 	PVDID pvdid;
 
 	GArray *gateways;
@@ -126,6 +125,12 @@ typedef enum {
 	NM_RDISC_CONFIG_HOP_LIMIT                           = 1 << 6,
 	NM_RDISC_CONFIG_MTU                                 = 1 << 7,
 	NM_RDISC_CONFIG_PVD                                 = 1 << 8,
+	NM_RDISC_CONFIG_PVD_GATEWAYS                        = 1 << 9,
+	NM_RDISC_CONFIG_PVD_ADDRESSES                       = 1 << 10,
+	NM_RDISC_CONFIG_PVD_ROUTES                          = 1 << 11,
+	NM_RDISC_CONFIG_PVD_DNS_SERVERS                     = 1 << 12,
+	NM_RDISC_CONFIG_PVD_DNS_DOMAINS                     = 1 << 13,
+	NM_RDISC_CONFIG_PVD_MTU                             = 1 << 14,
 } NMRDiscConfigMap;
 
 #define NM_RDISC_MAX_ADDRESSES_DEFAULT 16
@@ -160,7 +165,7 @@ typedef struct {
 	int hop_limit;
 	guint32 mtu;
 
-	// Hash of NMRDisc structures
+	// Hash indexed by PVDID of NMRDisc structures
 	GHashTable *pvds;
 } NMRDisc;
 

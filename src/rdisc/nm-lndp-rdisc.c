@@ -266,6 +266,9 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	if (nm_rdisc_add_gateway (rdisc, &gateway))
 		changed |= NM_RDISC_CONFIG_GATEWAYS;
 
+	// TODO: If gateway.lifetime is 0 then the router is stopping and all the
+	// configuration data sent by this router has to be removed!
+
 	g_array_append_val(pvd->gateways, gateway);
 
 	/* Addresses & Routes */
@@ -418,6 +421,13 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	/* PvD Container option */
 	err = FALSE;
 	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_PVDCO) {
+
+		/*
+		 * TODO: It would be better to find PvD and then remove elements
+		 * from it than to create a completely new structure and replace
+		 * the old one. Replacing the old one we don't know what exactly
+		 * changed and we are thus more inefficient.
+		 */
 
 		_LOGD ("received PvD CO option");
 
