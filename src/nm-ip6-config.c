@@ -1782,6 +1782,9 @@ nm_ip6_config_set_pvdid (NMIP6Config *config, PVDID *pvdid)
 	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
 
 	switch(pvdid->type) {
+	case NDP_PVDID_NONE:
+		// TODO: This is actually error and has to be reported!
+		break;
 	case NDP_PVDID_TYPE_UUID:
 		priv->pvdid.type = pvdid->type;
 		strncpy(priv->pvdid.uuid, pvdid->uuid, 36);
@@ -1804,6 +1807,8 @@ nm_ip6_config_pvd_hash (gconstpointer key)
 	PVDID *pvdid = (PVDID *)key;
 
 	switch(pvdid->type) {
+	case NDP_PVDID_NONE:
+		return 0;
 	case NDP_PVDID_TYPE_UUID:
 		return g_str_hash(pvdid->uuid);
 	}
@@ -1821,6 +1826,8 @@ nm_ip6_config_pvd_cmp(gconstpointer a, gconstpointer b)
 		return FALSE;
 
 	switch(pvdid_a->type) {
+	case NDP_PVDID_NONE:
+		return FALSE;
 	case NDP_PVDID_TYPE_UUID:
 		return g_str_equal(pvdid_a->uuid, pvdid_b->uuid);
 	}

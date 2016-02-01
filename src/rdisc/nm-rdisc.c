@@ -684,6 +684,8 @@ pvd_hash_func(gconstpointer key)
 	NMRDiscPVD *pvd = (NMRDiscPVD *)key;
 
 	switch(pvd->pvdid.type) {
+	case NDP_PVDID_NONE:
+		return 0;
 	case NDP_PVDID_TYPE_UUID:
 		return g_str_hash(pvd->pvdid.uuid);
 	}
@@ -701,6 +703,8 @@ pvd_cmp_func(gconstpointer a, gconstpointer b)
 		return FALSE;
 
 	switch(pvd_a->pvdid.type) {
+	case NDP_PVDID_NONE:
+		return FALSE;
 	case NDP_PVDID_TYPE_UUID:
 		return g_str_equal(pvd_a->pvdid.uuid, pvd_b->pvdid.uuid);
 	}
