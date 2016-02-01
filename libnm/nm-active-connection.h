@@ -52,6 +52,7 @@ G_BEGIN_DECLS
 #define NM_ACTIVE_CONNECTION_DHCP6_CONFIG         "dhcp6-config"
 #define NM_ACTIVE_CONNECTION_VPN                  "vpn"
 #define NM_ACTIVE_CONNECTION_MASTER               "master"
+#define NM_ACTIVE_CONNECTION_PVDS                 "provisioning-domains"
 
 struct _NMActiveConnection {
 	NMObject parent;
@@ -81,6 +82,7 @@ gboolean                 nm_active_connection_get_default6             (NMActive
 NMIPConfig              *nm_active_connection_get_ip6_config           (NMActiveConnection *connection);
 NMDhcpConfig            *nm_active_connection_get_dhcp6_config         (NMActiveConnection *connection);
 gboolean                 nm_active_connection_get_vpn                  (NMActiveConnection *connection);
+const GPtrArray         *nm_active_connection_get_pvds                 (NMActiveConnection *connection);
 
 G_END_DECLS
 

@@ -22,6 +22,7 @@
 #include "config.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "nm-ip-config.h"
 #include "nm-ip4-config.h"
@@ -45,6 +46,7 @@ typedef struct {
 	char **searches;
 	char **wins;
 
+	PVDID pvdid;
 	gboolean new_style_data;
 } NMIPConfigPrivate;
 
@@ -58,6 +60,7 @@ enum {
 	PROP_DOMAINS,
 	PROP_SEARCHES,
 	PROP_WINS_SERVERS,
+	PROP_PVDID,
 
 	LAST_PROP
 };
@@ -163,6 +166,25 @@ demarshal_ip_route_data (NMObject *object, GParamSpec *pspec, GVariant *value, g
 	return TRUE;
 }
 
+static gboolean
+demarshal_pvdid (NMObject *object, GParamSpec *pspec, GVariant *value, gpointer field)
+{
+	NMIPConfigPrivate *priv = NM_IP_CONFIG_GET_PRIVATE (object);
+	gsize len;
+	const gchar *uuid;
+
+	g_return_val_if_fail (g_variant_is_of_type (value, G_VARIANT_TYPE ("s")), FALSE);
+
+	uuid = g_variant_get_string(value, &len);
+
+	priv->pvdid.type = NDP_PVDID_TYPE_UUID;
+	strncpy(priv->pvdid.uuid, uuid, len);
+
+	_nm_object_queue_notify (object, NM_IP_CONFIG_PVDID);
+
+	return TRUE;
+}
+
 static void
 init_dbus (NMObject *object)
 {
@@ -177,6 +199,7 @@ init_dbus (NMObject *object)
 		{ NM_IP_CONFIG_DOMAINS,      &priv->domains, },
 		{ NM_IP_CONFIG_SEARCHES,     &priv->searches, },
 		{ NM_IP_CONFIG_WINS_SERVERS, &priv->wins, demarshal_ip_array },
+		{ NM_IP_CONFIG_PVDID,        &priv->pvdid, demarshal_pvdid },
 		{ NULL },
 	};
 
@@ -242,6 +265,9 @@ get_property (GObject *object,
 		g_value_set_boxed (value, (char **) nm_ip_config_get_searches (self));
 		break;
 	case PROP_WINS_SERVERS:
+		g_value_set_boxed (value, (char **) nm_ip_config_get_wins_servers (self));
+		break;
+	case PROP_PVDID:
 		g_value_set_boxed (value, (char **) nm_ip_config_get_wins_servers (self));
 		break;
 	default:
@@ -363,6 +389,22 @@ nm_ip_config_class_init (NMIPConfigClass *config_class)
 	                         G_TYPE_STRV,
 	                         G_PARAM_READABLE |
 	                         G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMIPConfig:pvdid:
+	 *
+	 * A string containing PvD identifier of this specific configuration.
+	 *
+	 * TODO: This has to be structure with type definition (UUID is the
+	 * only one supported for now!).
+	 **/
+	g_object_class_install_property
+	    (object_class, PROP_PVDID,
+	     g_param_spec_string (NM_IP_CONFIG_PVDID, "", "",
+	                         NULL,
+	                         G_PARAM_READABLE |
+	                         G_PARAM_STATIC_STRINGS));
+
 }
 
 /**
@@ -503,3 +545,24 @@ nm_ip_config_get_routes (NMIPConfig *config)
 
 	return NM_IP_CONFIG_GET_PRIVATE (config)->routes;
 }
+
+/**
+ * nm_ip_config_get_pvdid:
+ * @config: a #NMIPConfig
+ *
+ * Get the PVD ID.
+ *
+ * Returns: (element-type PVDID) (transfer none): the #GPtrArray containing
+ * #NMIPRoutes. This is the internal copy used by the configuration, and must
+ * not be modified. The library never modifies the returned array and thus it is
+ * safe for callers to reference and keep using it.
+ *
+ **/
+const PVDID *
+nm_ip_config_get_pvdid (NMIPConfig *config)
+{
+	g_return_val_if_fail (NM_IS_IP_CONFIG (config), NULL);
+
+	return &NM_IP_CONFIG_GET_PRIVATE (config)->pvdid;
+}
+

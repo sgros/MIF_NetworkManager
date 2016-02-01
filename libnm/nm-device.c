@@ -22,6 +22,8 @@
 #include "config.h"
 
 #include <string.h>
+// TODO: Remove this, only for debugging using printfs
+#include <stdio.h>
 
 #include <gudev/gudev.h>
 
@@ -112,6 +114,8 @@ typedef struct {
 	char *physical_port_id;
 	guint32 mtu;
 	GPtrArray *lldp_neighbors;
+
+	GPtrArray *pvds;
 } NMDevicePrivate;
 
 enum {
@@ -143,6 +147,7 @@ enum {
 	PROP_MTU,
 	PROP_METERED,
 	PROP_LLDP_NEIGHBORS,
+	PROP_PVDS,
 
 	LAST_PROP
 };
@@ -170,6 +175,7 @@ nm_device_init (NMDevice *device)
 	priv->state = NM_DEVICE_STATE_UNKNOWN;
 	priv->reason = NM_DEVICE_STATE_REASON_NONE;
 	priv->lldp_neighbors = g_ptr_array_new ();
+	priv->pvds = g_ptr_array_new ();
 }
 
 static gboolean
@@ -250,6 +256,7 @@ init_dbus (NMObject *object)
 		{ NM_DEVICE_MTU,               &priv->mtu },
 		{ NM_DEVICE_METERED,           &priv->metered },
 		{ NM_DEVICE_LLDP_NEIGHBORS,    &priv->lldp_neighbors, demarshal_lldp_neighbors },
+		{ NM_DEVICE_PVDS,              &priv->pvds, NULL, NM_TYPE_IP6_CONFIG },
 
 		/* Properties that exist in D-Bus but that we don't track */
 		{ "ip4-address", NULL },
@@ -411,6 +418,8 @@ dispose (GObject *object)
 	g_clear_pointer (&priv->available_connections, g_ptr_array_unref);
 	g_clear_pointer (&priv->lldp_neighbors, g_ptr_array_unref);
 
+	g_clear_pointer (&priv->pvds, g_ptr_array_unref);
+
 	G_OBJECT_CLASS (nm_device_parent_class)->dispose (object);
 }
 
@@ -526,6 +535,9 @@ get_property (GObject *object,
 		break;
 	case PROP_LLDP_NEIGHBORS:
 		g_value_set_boxed (value, nm_device_get_lldp_neighbors (device));
+		break;
+	case PROP_PVDS:
+		g_value_set_boxed (value, _nm_utils_copy_object_array (nm_device_get_pvds (device)));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -930,6 +942,18 @@ nm_device_class_init (NMDeviceClass *device_class)
 	    (object_class, PROP_LLDP_NEIGHBORS,
 	     g_param_spec_boxed (NM_DEVICE_LLDP_NEIGHBORS, "", "",
 	                         G_TYPE_PTR_ARRAY,
+	                         G_PARAM_READABLE |
+	                         G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMDevice:pvds:
+	 *
+	 * The provisioning domains.
+	 **/
+	g_object_class_install_property
+	    (object_class, PROP_PVDS,
+	     g_param_spec_boxed (NM_DEVICE_PVDS, "", "",
+	                         G_TYPE_STRV,
 	                         G_PARAM_READABLE |
 	                         G_PARAM_STATIC_STRINGS));
 
@@ -2128,6 +2152,27 @@ nm_device_get_lldp_neighbors (NMDevice *device)
        g_return_val_if_fail (NM_IS_DEVICE (device), NULL);
 
        return NM_DEVICE_GET_PRIVATE (device)->lldp_neighbors;
+}
+
+/**
+ * nm_device_get_pvds:
+ * @device: a #NMDevice
+ *
+ * Gets the list of provisioning domains received on the interface.
+ *
+ * Returns: (element-type NMIP6Config) (transfer none): the #GPtrArray
+ * containing #NMIPConfig<!-- -->s. This is the internal copy used by the
+ * device and must not be modified. The library never modifies the returned
+ * array and thus it is safe for callers to reference and keep using it.
+ *
+ * Since: 1.2
+ **/
+GPtrArray *
+nm_device_get_pvds (NMDevice *device)
+{
+       g_return_val_if_fail (NM_IS_DEVICE (device), NULL);
+
+       return NM_DEVICE_GET_PRIVATE (device)->pvds;
 }
 
 /**

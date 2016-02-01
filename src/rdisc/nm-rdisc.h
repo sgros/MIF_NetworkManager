@@ -92,7 +92,9 @@ typedef struct {
 } NMRDiscDNSDomain;
 
 /*
- * TODO: The same structure is defined in src/nm-ip6-config.h too!
+ * TODO: The same structure is defined
+ *		src/nm-ip6-config.h
+ *		libnm/nm-ip-config.h
  */
 typedef struct _pvdid {
 	enum ndp_pvdid_type type;

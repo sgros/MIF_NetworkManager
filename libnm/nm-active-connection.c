@@ -66,6 +66,7 @@ typedef struct {
 	NMDhcpConfig *dhcp6_config;
 	gboolean is_vpn;
 	NMDevice *master;
+	GPtrArray *pvds;
 } NMActiveConnectionPrivate;
 
 enum {
@@ -85,6 +86,7 @@ enum {
 	PROP_DHCP6_CONFIG,
 	PROP_VPN,
 	PROP_MASTER,
+	PROP_PVDS,
 
 	LAST_PROP
 };
@@ -361,12 +363,31 @@ nm_active_connection_get_master (NMActiveConnection *connection)
 	return NM_ACTIVE_CONNECTION_GET_PRIVATE (connection)->master;
 }
 
+/**
+ * nm_active_connection_get_pvds:
+ * @connection: a #NMActiveConnection
+ *
+ * Gets the #NMIP6Config representig provisioning domains available on the
+ * active connections.
+ *
+ * Returns: (element-type NMIP6Config): the #GPtrArray containing #NMIP6Config.
+ * This is the internal copy used by the connection, and must not be modified.
+ **/
+const GPtrArray *
+nm_active_connection_get_pvds (NMActiveConnection *connection)
+{
+	g_return_val_if_fail (NM_IS_ACTIVE_CONNECTION (connection), NULL);
+
+	return NM_ACTIVE_CONNECTION_GET_PRIVATE (connection)->pvds;
+}
+
 static void
 nm_active_connection_init (NMActiveConnection *connection)
 {
 	NMActiveConnectionPrivate *priv = NM_ACTIVE_CONNECTION_GET_PRIVATE (connection);
 
 	priv->devices = g_ptr_array_new ();
+	priv->pvds = g_ptr_array_new ();
 }
 
 static void
@@ -375,6 +396,7 @@ dispose (GObject *object)
 	NMActiveConnectionPrivate *priv = NM_ACTIVE_CONNECTION_GET_PRIVATE (object);
 
 	g_clear_pointer (&priv->devices, g_ptr_array_unref);
+	g_clear_pointer (&priv->pvds, g_ptr_array_unref);
 
 	g_clear_object (&priv->connection);
 	g_clear_object (&priv->master);
@@ -453,6 +475,9 @@ get_property (GObject *object,
 	case PROP_MASTER:
 		g_value_set_object (value, nm_active_connection_get_master (self));
 		break;
+	case PROP_PVDS:
+		g_value_take_boxed (value, _nm_utils_copy_object_array (nm_active_connection_get_pvds (self)));
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -497,6 +522,7 @@ init_dbus (NMObject *object)
 		{ NM_ACTIVE_CONNECTION_DHCP6_CONFIG,         &priv->dhcp6_config, NULL, NM_TYPE_DHCP6_CONFIG },
 		{ NM_ACTIVE_CONNECTION_VPN,                  &priv->is_vpn },
 		{ NM_ACTIVE_CONNECTION_MASTER,               &priv->master, NULL, NM_TYPE_DEVICE },
+		{ NM_ACTIVE_CONNECTION_PVDS,                 &priv->pvds, NULL, NM_TYPE_IP6_CONFIG },
 
 		{ NULL },
 	};
@@ -711,4 +737,18 @@ nm_active_connection_class_init (NMActiveConnectionClass *ap_class)
 		                      NM_TYPE_DEVICE,
 		                      G_PARAM_READABLE |
 		                      G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMActiveConnection:pvds:
+	 *
+	 * The provisioning domains of the active connection.
+	 *
+	 * Element-type: NMIP6Config
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_PVDS,
+		 g_param_spec_boxed (NM_ACTIVE_CONNECTION_PVDS, "", "",
+		                     G_TYPE_PTR_ARRAY,
+		                     G_PARAM_READABLE |
+		                     G_PARAM_STATIC_STRINGS));
 }

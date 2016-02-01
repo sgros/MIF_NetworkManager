@@ -64,6 +64,7 @@ G_BEGIN_DECLS
 #define NM_DEVICE_MTU "mtu"
 #define NM_DEVICE_METERED "metered"
 #define NM_DEVICE_LLDP_NEIGHBORS "lldp-neighbors"
+#define NM_DEVICE_PVDS "provisioning-domains"
 
 struct _NMDevice {
 	NMObject parent;
@@ -137,6 +138,8 @@ NM_AVAILABLE_IN_1_2
 GPtrArray *          nm_device_get_lldp_neighbors    (NMDevice *device);
 char **              nm_device_disambiguate_names    (NMDevice **devices,
                                                       int        num_devices);
+GPtrArray *          nm_device_get_pvds              (NMDevice *device);
+
 NM_AVAILABLE_IN_1_2
 gboolean             nm_device_reapply              (NMDevice *device,
                                                      NMConnection *connection,

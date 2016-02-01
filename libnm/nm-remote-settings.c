@@ -22,6 +22,7 @@
 #include "config.h"
 
 #include <string.h>
+#include <stdio.h>
 #include <nm-dbus-interface.h>
 #include <nm-connection.h>
 

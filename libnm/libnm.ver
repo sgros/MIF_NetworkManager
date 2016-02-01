@@ -292,6 +292,7 @@ global:
 	nm_ip_config_get_searches;
 	nm_ip_config_get_type;
 	nm_ip_config_get_wins_servers;
+	nm_ip_config_get_pvdid;
 	nm_ip_route_equal;
 	nm_ip_route_get_attribute;
 	nm_ip_route_get_attribute_names;
@@ -868,6 +869,7 @@ libnm_1_0_6 {
 
 libnm_1_2_0 {
 global:
+	nm_active_connection_get_pvds;
 	nm_access_point_get_last_seen;
 	nm_client_get_all_devices;
 	nm_connection_get_setting_ip_tunnel;
@@ -878,6 +880,7 @@ global:
 	nm_device_get_lldp_neighbors;
 	nm_device_get_metered;
 	nm_device_get_nm_plugin_missing;
+	nm_device_get_pvds;
 	nm_device_ip_tunnel_get_encapsulation_limit;
 	nm_device_ip_tunnel_get_flow_label;
 	nm_device_ip_tunnel_get_input_key;

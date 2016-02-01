@@ -36,32 +36,16 @@
 
 /* Print details of connection */
 static void
-show_connection (NMConnection *connection)
+show_active_connection (NMActiveConnection *connection)
 {
-	NMSettingConnection *s_con;
-	guint64 timestamp;
-	char *timestamp_str;
-	char timestamp_real_str[64];
-	const char *val1, *val2, *val3, *val3a, *val4, *val5;
+	const char *val1, *val2, *val3, *val4;
 
-	s_con = nm_connection_get_setting_connection (connection);
-	if (s_con) {
-		/* Get various info from NMSettingConnection and show it */
-		timestamp = nm_setting_connection_get_timestamp (s_con);
-		timestamp_str = g_strdup_printf ("%" G_GUINT64_FORMAT, timestamp);
-		strftime (timestamp_real_str, sizeof (timestamp_real_str), "%c", localtime ((time_t *) &timestamp));
+	val1 = nm_active_connection_get_id(connection);
+	val2 = nm_active_connection_get_uuid(connection);
+	val3 = nm_active_connection_get_connection_type(connection);
+	val4 = nm_active_connection_get_specific_object_path(connection);
 
-		val1 = nm_setting_connection_get_id (s_con);
-		val2 = nm_setting_connection_get_uuid (s_con);
-		val3 = nm_setting_connection_get_connection_type (s_con);
-		val3a = nm_setting_connection_get_interface_name (s_con);
-		val4 = nm_connection_get_path (connection);
-		val5 = timestamp ? timestamp_real_str : "never";
-
-		printf ("%-25s | %s | %-15s | %10s | %-43s | %s\n", val1, val2, val3, val3a, val4, val5);
-
-		g_free (timestamp_str);
-	}
+	printf ("%-10s|%37s | %-15s | %-20s |\n", val1, val2, val3, val4);
 }
 
 int
@@ -89,12 +73,15 @@ main (int argc, char *argv[])
 	}
 
 	/* Now the connections can be listed. */
-	connections = nm_client_get_connections (client);
+	connections = nm_client_get_active_connections (client);
 
-	printf ("Connections:\n===================\n");
+	printf ("Active connections:\n===================\n\n");
+
+	printf ("%-10s| %-37s| %-15s | %-20s |\n", "ID", "UUID", "TYPE", "SPECIFIC OBJECT PATH");
+	printf ("-------------------------------------------------------------------------------------------\n");
 
 	for (i = 0; i < connections->len; i++)
-		show_connection (connections->pdata[i]);
+		show_active_connection (connections->pdata[i]);
 
 	g_object_unref (client);
 
