@@ -320,6 +320,11 @@ libNetworkManager_la_SOURCES = \
 	settings/nm-settings.c \
 	settings/nm-settings.h \
 	\
+	netns/nm-netns-controller.c \
+	netns/nm-netns-controller.h \
+	netns/nm-netns.c \
+	netns/nm-netns.h \
+	\
 	settings/plugins/keyfile/nm-keyfile-connection.c \
 	settings/plugins/keyfile/nm-keyfile-connection.h \
 	settings/plugins/keyfile/plugin.c \

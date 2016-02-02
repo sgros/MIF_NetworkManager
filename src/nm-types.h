@@ -166,6 +166,10 @@ typedef struct _NMSecretAgent        NMSecretAgent;
 typedef struct _NMSettings           NMSettings;
 typedef struct _NMSettingsConnection NMSettingsConnection;
 
+/* network namespaces */
+typedef struct _NMNetnsController    NMNetnsController;
+typedef struct _NMNetns              NMNetns;
+
 /* utils */
 typedef struct _NMUtilsIPv6IfaceId   NMUtilsIPv6IfaceId;
 

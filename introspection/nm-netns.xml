@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<node name="/" xmlns:tp="http://telepathy.freedesktop.org/wiki/DbusSpec#extensions-v0">
+  <interface name="org.freedesktop.NetworkManager.NetNsInstance">
+    <tp:docstring>
+      The Settings interface allows clients to view and administrate a
+      specific instance of network namespace controlled by NetworkManager.
+    </tp:docstring>
+
+  </interface>
+</node>
+

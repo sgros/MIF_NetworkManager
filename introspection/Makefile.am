@@ -76,7 +76,9 @@ nodist_libnmdbus_la_SOURCES = \
 	nmdbus-vpn-connection.c \
 	nmdbus-vpn-connection.h \
 	nmdbus-vpn-plugin.c \
-	nmdbus-vpn-plugin.h
+	nmdbus-vpn-plugin.h \
+	nmdbus-netns.c \
+	nmdbus-netns.h
 
 define _make_nmdbus_rule
 $(1): $(patsubst nmdbus-%.c,nm-%.xml,$(1))
@@ -132,4 +134,7 @@ EXTRA_DIST = \
 	nm-settings.xml \
 	nm-vpn-connection.xml \
 	nm-vpn-plugin.xml \
-	nm-wimax-nsp.xml
+	nm-wimax-nsp.xml \
+	nm-netns-controller.xml \
+	nm-netns.xml
+
