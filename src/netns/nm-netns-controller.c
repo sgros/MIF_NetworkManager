@@ -28,32 +28,205 @@
 #include <gmodule.h>
 #include <nm-dbus-interface.h>
 
+#include "nm-netns.h"
 #include "nm-netns-controller.h"
+#include "NetworkManagerUtils.h"
+
+#include "nmdbus-netns-controller.h"
 
 G_DEFINE_TYPE (NMNetnsController, nm_netns_controller, NM_TYPE_EXPORTED_OBJECT)
 
+enum {
+	PROP_0,
+	PROP_REGISTER_SINGLETON,
+	LAST_PROP,
+};
+
 typedef struct {
+	gboolean register_singleton;
+
+	/*
+	 * Hash table of NMNetns object indexed by DBus path they are
+	 * exported at.
+	 */
+	GHashTable *network_namespaces;
 } NMNetnsControllerPrivate;
+
+#define NM_NETNS_CONTROLLER_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_NETNS_CONTROLLER, NMNetnsControllerPrivate))
+
+NM_DEFINE_SINGLETON_INSTANCE (NMNetnsController);
+
+NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
+
+static void
+impl_netns_controller_list_namespaces (NMNetnsController *self,
+		GDBusMethodInvocation *context)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	GPtrArray *network_namespaces;
+	GHashTableIter iter;
+	gpointer key;
+
+	network_namespaces = g_ptr_array_sized_new (g_hash_table_size (priv->network_namespaces) + 1);
+        g_hash_table_iter_init (&iter, priv->network_namespaces);
+        while (g_hash_table_iter_next (&iter, &key, NULL))
+                g_ptr_array_add (network_namespaces, key);
+        g_ptr_array_add (network_namespaces, NULL);
+
+        g_dbus_method_invocation_return_value (context,
+                                               g_variant_new ("(^ao)", network_namespaces->pdata));
+        g_ptr_array_unref (network_namespaces);
+}
+
+static void
+impl_netns_controller_add_namespace (NMSettings *self,
+			GDBusMethodInvocation *context,
+			const char *netnsname)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	NMNetns *netns;
+	const char *path;
+
+	printf("Called AddConnection %s\n", netnsname);
+
+	netns = nm_netns_new(netnsname);
+	path = nm_netns_export(netns);
+	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
+	g_object_ref (netns);
+
+	return;
+
+#if 0
+failure:
+        g_assert (error);
+        g_dbus_method_invocation_take_error (context, error);
+#endif
+}
+
+
+/**
+ * nm_netns_controller_setup:
+ * @instance: the #NMNetnsController instance
+ *
+ * Failing to set up #NMNetnsController singleton results in a fatal
+ * error, as well as trying to initialize it multiple times without
+ * freeing it.
+ *
+ * NetworkManager will typically use only one network manager controller
+ * object during its run.
+ */
+void
+nm_netns_controller_setup (void)
+{
+        g_return_if_fail (!singleton_instance);
+
+        singleton_instance = nm_netns_controller_new();
+
+        nm_singleton_instance_register ();
+
+        nm_log_dbg (LOGD_CORE, "setup %s singleton (%p, %s)",
+			"NMNetnsController", singleton_instance,
+			G_OBJECT_TYPE_NAME (singleton_instance));
+}
 
 NMNetnsController *
 nm_netns_controller_new (void)
 {
-	return NULL;
-}
+	NMNetnsController *self;
+	NMNetnsControllerPrivate *priv;
 
-gboolean
-nm_netns_controller_start (NMNetnsController *self, GError **error)
-{
-	return FALSE;
+        self = g_object_new (NM_TYPE_NETNS_CONTROLLER,
+			NM_NETNS_CONTROLLER_REGISTER_SINGLETON, TRUE,
+			NULL);
+
+	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+
+	nm_exported_object_export (NM_EXPORTED_OBJECT (self));
+	return self;
 }
 
 static void
 nm_netns_controller_init (NMNetnsController *self)
 {
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+
+	priv->network_namespaces = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
 }
 
 static void
-nm_netns_controller_class_init (NMNetnsControllerClass *class)
+dispose (GObject *object)
 {
+	G_OBJECT_CLASS (nm_netns_controller_parent_class)->dispose (object);
+}
+
+static void
+finalize (GObject *object)
+{
+	NMNetnsController *self = NM_NETNS_CONTROLLER (object);
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+
+	g_hash_table_destroy (priv->network_namespaces);
+
+	G_OBJECT_CLASS (nm_netns_controller_parent_class)->finalize (object);
+}
+
+/******************************************************************/
+
+static void
+set_property (GObject *object, guint prop_id,
+	      const GValue *value, GParamSpec *pspec)
+{
+	NMNetnsControllerPrivate *priv =  NM_NETNS_CONTROLLER_GET_PRIVATE (object);
+
+	switch (prop_id) {
+	case PROP_REGISTER_SINGLETON:
+		/* construct-only */
+		priv->register_singleton = g_value_get_boolean (value);
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
+}
+
+static void
+get_property (GObject *object, guint prop_id,
+	      GValue *value, GParamSpec *pspec)
+{
+}
+
+static void
+nm_netns_controller_class_init (NMNetnsControllerClass *klass)
+{
+	GObjectClass *object_class = G_OBJECT_CLASS (klass);
+	NMExportedObjectClass *exported_object_class = NM_EXPORTED_OBJECT_CLASS (klass);
+
+	g_type_class_add_private (klass, sizeof (NMNetnsControllerPrivate));
+
+	exported_object_class->export_path = NM_DBUS_PATH_NETNS_CONTROLLER;
+
+	/* virtual methods */
+	object_class->set_property = set_property;
+	object_class->get_property = get_property;
+	object_class->dispose = dispose;
+	object_class->finalize = finalize;
+
+	g_object_class_install_property
+	 (object_class, PROP_REGISTER_SINGLETON,
+	     g_param_spec_boolean (NM_NETNS_CONTROLLER_REGISTER_SINGLETON, "", "",
+				   FALSE,
+				   G_PARAM_WRITABLE |
+				   G_PARAM_CONSTRUCT_ONLY |
+				   G_PARAM_STATIC_STRINGS));
+
+// TODO: Signal that new namespace is added
+
+// TODO: Signal that namespace is removed
+
+	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
+                                                NMDBUS_TYPE_NETWORK_NAMESPACES_CONTROLLER_SKELETON,
+                                                "ListNetworkNamespaces", impl_netns_controller_list_namespaces,
+                                                "AddNetworkNamespace", impl_netns_controller_add_namespace,
+                                                NULL);
 }
 

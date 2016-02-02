@@ -82,6 +82,12 @@
 #define NM_DBUS_INTERFACE_SECRET_AGENT    NM_DBUS_INTERFACE ".SecretAgent"
 #define NM_DBUS_PATH_SECRET_AGENT         "/org/freedesktop/NetworkManager/SecretAgent"
 
+#define NM_DBUS_INTERFACE_NETNS_CONTROLLER "org.freedesktop.NetworkManager.NetworkNamespacesController"
+#define NM_DBUS_PATH_NETNS_CONTROLLER     "/org/freedesktop/NetworkManager/NetworkNamespacesController"
+
+#define NM_DBUS_INTERFACE_NETNS           "org.freedesktop.NetworkManager.NetworkNamespace"
+#define NM_DBUS_PATH_NETNS                "/org/freedesktop/NetworkManager/NetworkNamespace"
+
 /**
  * NMState:
  * @NM_STATE_UNKNOWN: networking state is unknown

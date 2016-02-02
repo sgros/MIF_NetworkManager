@@ -40,6 +40,7 @@
 #include "NetworkManagerUtils.h"
 #include "main-utils.h"
 #include "nm-manager.h"
+#include "nm-netns-controller.h"
 #include "nm-linux-platform.h"
 #include "nm-bus-manager.h"
 #include "nm-device.h"
@@ -457,6 +458,9 @@ main (int argc, char *argv[])
 
 	/* Set up platform interaction layer */
 	nm_linux_platform_setup ();
+
+	/* Set up network namespace controller */
+	nm_netns_controller_setup ();
 
 	NM_UTILS_KEEP_ALIVE (config, NM_PLATFORM_GET, "NMConfig-depends-on-NMPlatform");
 

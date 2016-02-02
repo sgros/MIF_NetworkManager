@@ -45,10 +45,12 @@ typedef struct {
 	NMExportedObjectClass parent_class;
 } NMNetnsControllerClass;
 
+#define NM_NETNS_CONTROLLER_REGISTER_SINGLETON		"register-singleton"
+
 GType nm_netns_controller_get_type (void);
 
-NMNetnsController *nm_netns_controller_new(void);
+void nm_netns_controller_setup (void);
 
-gboolean nm_netns_controller_start (NMNetnsController *self, GError **error);
+NMNetnsController *nm_netns_controller_new(void);
 
 #endif  /* __NM_NETNS_CONTROLLER_H__ */

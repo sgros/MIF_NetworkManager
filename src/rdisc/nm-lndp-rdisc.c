@@ -429,6 +429,14 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		 * changed and we are thus more inefficient.
 		 */
 
+		/*
+		 * TODO: Gateway lifetime found in RA has to be takein into account
+		 * also for PvDs received from the given gateway! This can be done
+		 * in two ways: implicitly, when some router is removed, evertying
+		 * that has the given gateway is removed; explicitly, every PvD has
+		 * its own copy of router lifetime.
+		 */
+
 		_LOGD ("received PvD CO option");
 
 		pvd = (NMRDiscPVD *)g_malloc0(sizeof(*pvd));

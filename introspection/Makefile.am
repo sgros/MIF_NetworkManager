@@ -77,6 +77,8 @@ nodist_libnmdbus_la_SOURCES = \
 	nmdbus-vpn-connection.h \
 	nmdbus-vpn-plugin.c \
 	nmdbus-vpn-plugin.h \
+	nmdbus-netns-controller.c \
+	nmdbus-netns-controller.h \
 	nmdbus-netns.c \
 	nmdbus-netns.h
 
