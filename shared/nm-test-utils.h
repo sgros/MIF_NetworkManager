@@ -648,6 +648,89 @@ nmtst_test_quick (void)
 	} G_STMT_END
 #endif
 
+/*****************************************************************************/
+
+typedef struct _NmtstTestData NmtstTestData;
+
+typedef void (*NmtstTestDataRelease) (const NmtstTestData *test_data);
+
+struct _NmtstTestData {
+	const char *testpath;
+	const char *detail;
+	NmtstTestDataRelease fcn_release;
+	gsize n_args;
+	gpointer args[1];
+};
+
+inline static void
+_nmtst_test_data_unpack_detail (const NmtstTestData *test_data, const char **detail, gsize n_args, ...)
+{
+	gsize i;
+	va_list ap;
+	gpointer *p;
+
+	g_assert (test_data);
+	g_assert_cmpint (n_args, ==, test_data->n_args);
+
+	if (detail)
+		*detail = test_data->detail;
+
+	va_start (ap, n_args);
+	for (i = 0; i < n_args; i++) {
+		p = va_arg (ap, gpointer *);
+
+		g_assert (p);
+		*p = test_data->args[i];
+	}
+	va_end (ap);
+}
+#define nmtst_test_data_unpack_detail(test_data, detail, ...) _nmtst_test_data_unpack_detail(test_data, detail, NM_NARG (__VA_ARGS__), ##__VA_ARGS__)
+#define nmtst_test_data_unpack(test_data, ...)                nmtst_test_data_unpack(test_data, NULL, ##__VA_ARGS__)
+
+inline static void
+_nmtst_test_data_free (gpointer data)
+{
+	NmtstTestData *test_data = data;
+
+	g_assert (test_data);
+
+	if (test_data->fcn_release)
+		test_data->fcn_release (test_data);
+
+	g_free ((gpointer) test_data->testpath);
+	g_free ((gpointer) test_data->detail);
+	g_free (test_data);
+}
+
+inline static void
+_nmtst_add_test_func_full (const char *testpath, const char *detail, GTestDataFunc test_func, NmtstTestDataRelease fcn_release, gsize n_args, ...)
+{
+	gsize i;
+	NmtstTestData *data;
+	va_list ap;
+
+	data = g_malloc (G_STRUCT_OFFSET (NmtstTestData, args) + sizeof (gpointer) * (n_args + 1));
+
+	data->testpath = g_strdup (testpath);
+	data->detail = g_strdup (detail);
+	data->fcn_release = fcn_release;
+	data->n_args = n_args;
+	va_start (ap, n_args);
+	for (i = 0; i < n_args; i++)
+		data->args[i] = va_arg (ap, gpointer);
+	data->args[i] = NULL;
+	va_end (ap);
+
+	g_test_add_data_func_full (testpath,
+	                           data,
+	                           test_func,
+	                           _nmtst_test_data_free);
+}
+#define nmtst_add_test_func_full(testpath, detail, test_func, fcn_release, ...) _nmtst_add_test_func_full(testpath, detail, test_func, fcn_release, NM_NARG (__VA_ARGS__), ##__VA_ARGS__)
+#define nmtst_add_test_func(testpath, detail, test_func, ...) nmtst_add_test_func_full(testpath, detail, test_func, NULL, ##__VA_ARGS__)
+
+/*****************************************************************************/
+
 inline static GRand *
 nmtst_get_rand0 (void)
 {
@@ -962,25 +1045,19 @@ _nmtst_assert_ip6_address (const char *file, int line, const struct in6_addr *ad
 }
 #define nmtst_assert_ip6_address(addr, str_expected) _nmtst_assert_ip6_address (__FILE__, __LINE__, addr, str_expected)
 
-inline static void
-FAIL(const char *test_name, const char *fmt, ...)
-{
-	va_list args;
-	char buf[500];
+/* Deprecated: don't use this overly verbose macro. */
+#define FAIL(test_name, fmt, ...) \
+    G_STMT_START { \
+        g_error ("%s:%d: FAIL[%s]: " fmt, __FILE__, __LINE__, test_name, ## __VA_ARGS__); \
+    } G_STMT_END
 
-	g_snprintf (buf, 500, "FAIL: (%s) %s\n", test_name, fmt);
-
-	va_start (args, fmt);
-	vfprintf (stderr, buf, args);
-	va_end (args);
-	_exit (1);
-}
-
+/* Deprecated: don't use this overly verbose macro. */
 #define ASSERT(x, test_name, fmt, ...) \
-	if (!(x)) { \
-		FAIL (test_name, fmt, ## __VA_ARGS__); \
-	}
-
+    G_STMT_START { \
+        if (!(x)) { \
+            FAIL (test_name, fmt, ## __VA_ARGS__); \
+        } \
+    } G_STMT_END
 
 #define nmtst_spawn_sync(working_directory, standard_out, standard_err, assert_exit_status, ...) \
 	__nmtst_spawn_sync (working_directory, standard_out, standard_err, assert_exit_status, ##__VA_ARGS__, NULL)
@@ -1584,7 +1661,7 @@ nmtst_assert_setting_verify_fails (NMSetting *setting,
 
 #ifdef __NM_UTILS_H__
 static inline void
-nmtst_assert_hwaddr_equals (gconstpointer hwaddr1, gssize hwaddr1_len, const char *expected, const char *loc)
+nmtst_assert_hwaddr_equals (gconstpointer hwaddr1, gssize hwaddr1_len, const char *expected, const char *file, int line)
 {
 	guint8 buf2[NM_UTILS_HWADDR_LEN_MAX];
 	gsize hwaddr2_len = 1;
@@ -1609,12 +1686,12 @@ nmtst_assert_hwaddr_equals (gconstpointer hwaddr1, gssize hwaddr1_len, const cha
 	if (success)
 		success = !memcmp (hwaddr1, buf2, hwaddr1_len);
 	if (!success) {
-		g_error ("assert: %s: hwaddr '%s' (%zd) expected, but got %s (%zd)",
-		         loc, expected, hwaddr2_len, nm_utils_hwaddr_ntoa (hwaddr1, hwaddr1_len), hwaddr1_len);
+		g_error ("assert: %s:%d: hwaddr '%s' (%zd) expected, but got %s (%zd)",
+		         file, line, expected, hwaddr2_len, nm_utils_hwaddr_ntoa (hwaddr1, hwaddr1_len), hwaddr1_len);
 	}
 }
 #define nmtst_assert_hwaddr_equals(hwaddr1, hwaddr1_len, expected) \
-    nmtst_assert_hwaddr_equals (hwaddr1, hwaddr1_len, expected, G_STRLOC)
+    nmtst_assert_hwaddr_equals (hwaddr1, hwaddr1_len, expected, __FILE__, __LINE__)
 #endif
 
 #if defined(__NM_SIMPLE_CONNECTION_H__) && defined(__NM_SETTING_CONNECTION_H__) && defined(__NM_KEYFILE_INTERNAL_H__)
