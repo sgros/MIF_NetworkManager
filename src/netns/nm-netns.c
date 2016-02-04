@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <stdio.h>
+
 #include <gmodule.h>
 #include <nm-dbus-interface.h>
 
@@ -42,6 +44,19 @@ enum {
 };
 
 typedef struct {
+
+	/*
+	 * file descriptor of file in directory /var/run/netns/
+	 * where network namespace is mounted. It is necessary
+	 * to have it because setns() system call needs it as a
+	 * paramter.
+	 */
+	int fd;
+
+	/*
+	 * Network namespace name, as created in /var/run/netns/
+	 * directory.
+	 */
 	char *name;
 } NMNetnsPrivate;
 
@@ -68,6 +83,8 @@ nm_netns_set_name(NMNetns *self, const char *name)
 		g_free(priv->name);
 
 	priv->name = g_strdup(name);
+
+	g_object_notify (G_OBJECT (self), NM_NETNS_NAME);
 }
 
 const char *
@@ -78,6 +95,22 @@ nm_netns_get_name(NMNetns *self)
 	return priv->name;
 }
 
+void
+nm_netns_set_id(NMNetns *self, int netns_id)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	priv->fd = netns_id;
+}
+
+int
+nm_netns_get_id(NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	return priv->fd;
+}
+
 /**************************************************************/
 
 NMNetns *
@@ -86,6 +119,7 @@ nm_netns_new (const char *netns_name)
 	NMNetns *self;
 
 	self = g_object_new (NM_TYPE_NETNS, NULL);
+	nm_netns_set_name(self, netns_name);
 
 	return self;
 }
@@ -161,6 +195,14 @@ nm_netns_class_init (NMNetnsClass *klass)
 	object_class->get_property = get_property;
 	object_class->dispose = dispose;
 	object_class->finalize = finalize;
+
+	/* Network namespace's name */
+	g_object_class_install_property
+		(object_class, PROP_NAME,
+		 g_param_spec_string (NM_NETNS_NAME, "", "",
+				      NULL,
+				      G_PARAM_READABLE |
+				      G_PARAM_STATIC_STRINGS));
 
 	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
                                                 NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,

@@ -23,6 +23,9 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mount.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <arpa/inet.h>
@@ -41,6 +44,7 @@
 #include <netlink/route/addr.h>
 #include <netlink/route/route.h>
 #include <gudev/gudev.h>
+#include <sched.h>
 
 #include "nm-core-internal.h"
 #include "NetworkManagerUtils.h"
@@ -112,6 +116,11 @@
 #define IP6_FLOWINFO_TCLASS_MASK        0x0FF00000
 #define IP6_FLOWINFO_TCLASS_SHIFT       20
 #define IP6_FLOWINFO_FLOWLABEL_MASK     0x000FFFFF
+
+// network namespace related constants
+#define PATHMAX				4096
+#define NETNS_PATH			"/var/run/netns/"
+#define SELF_NET_PATH			"/proc/self/ns/net"
 
 /*********************************************************************************************/
 
@@ -2605,6 +2614,113 @@ static void
 process_events (NMPlatform *platform)
 {
 	delayed_action_handle_all (platform, TRUE);
+}
+
+/******************************************************************/
+
+static gboolean
+netns_get_root(NMPlatform *platform, const char *name, int *netns_id)
+{
+	char filename[PATHMAX];
+
+	strcpy(filename, NETNS_PATH);
+	strncat(filename, name, PATHMAX);
+
+	/*
+	 * First, we have to check if the given name already
+	 * exists.
+	 */
+
+	/*
+	 * Create a node in /var/run/netns 
+	 */
+	if ((*netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
+		perror("create");
+		return FALSE;
+	}
+
+	if (mount(SELF_NET_PATH, filename, "none", MS_BIND, NULL) < 0) {
+		perror("mount");
+		close(*netns_id);
+		*netns_id = -1;
+		unlink(filename);
+		return FALSE;
+	}
+
+	if ((*netns_id = open(filename, O_RDONLY)) == -1) {
+		perror("open");
+		*netns_id = -1;
+		unlink(filename);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static gboolean
+netns_create(NMPlatform *platform, const char *name, int *netns_id)
+{
+	char filename[PATHMAX];
+
+	strcpy(filename, NETNS_PATH);
+	strncat(filename, name, PATHMAX);
+
+	/*
+	 * First, we have to check if the given name already
+	 * exists.
+	 */
+
+	/*
+	 * Create a node in /var/run/netns 
+	 */
+	if ((*netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
+		perror("create");
+		return FALSE;
+	}
+
+	close(*netns_id);
+
+	if (unshare(CLONE_NEWNET) < 0) {
+		perror("unshare");
+		close(*netns_id);
+		*netns_id = -1;
+		unlink(filename);
+		return FALSE;
+	}
+
+	if (mount(SELF_NET_PATH, filename, "none", MS_BIND, NULL) < 0) {
+		perror("mount");
+		close(*netns_id);
+		*netns_id = -1;
+		unlink(filename);
+		return FALSE;
+	}
+
+	if ((*netns_id = open(filename, O_RDONLY)) == -1) {
+		perror("open");
+		*netns_id = -1;
+		unlink(filename);
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+static gboolean
+netns_destroy(NMPlatform *platform)
+{
+	return FALSE;
+}
+
+static gboolean
+netns_activate(NMPlatform *platform, int netns_id)
+{
+	if (setns(netns_id, CLONE_NEWNET) < 0) {
+		perror("setns");
+		return FALSE;
+	}
+
+	return TRUE;
 }
 
 /******************************************************************/
@@ -6162,6 +6278,11 @@ nm_linux_platform_class_init (NMLinuxPlatformClass *klass)
 
 	platform_class->check_support_kernel_extended_ifa_flags = check_support_kernel_extended_ifa_flags;
 	platform_class->check_support_user_ipv6ll = check_support_user_ipv6ll;
+
+	platform_class->netns_get_root = netns_get_root;
+	platform_class->netns_create = netns_create;
+	platform_class->netns_destroy = netns_destroy;
+	platform_class->netns_activate = netns_activate;
 
 	platform_class->process_events = process_events;
 }

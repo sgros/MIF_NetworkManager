@@ -28,6 +28,7 @@
 #include <gmodule.h>
 #include <nm-dbus-interface.h>
 
+#include "nm-platform.h"
 #include "nm-netns.h"
 #include "nm-netns-controller.h"
 #include "NetworkManagerUtils.h"
@@ -46,6 +47,16 @@ typedef struct {
 	gboolean register_singleton;
 
 	/*
+	 * Pointer to a root network namespace
+	 */
+	NMNetns *root_ns;
+
+	/*
+	 * Pointer to a currently active network namespace
+	 */
+	NMNetns *act_ns;
+
+	/*
 	 * Hash table of NMNetns object indexed by DBus path they are
 	 * exported at.
 	 */
@@ -57,6 +68,8 @@ typedef struct {
 NM_DEFINE_SINGLETON_INSTANCE (NMNetnsController);
 
 NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
+
+#define NETNS_ROOT_NAME			"rootns"
 
 static void
 impl_netns_controller_list_namespaces (NMNetnsController *self,
@@ -85,24 +98,32 @@ impl_netns_controller_add_namespace (NMSettings *self,
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 	NMNetns *netns;
+
 	const char *path;
+	int netns_id;
 
 	printf("Called AddConnection %s\n", netnsname);
 
 	netns = nm_netns_new(netnsname);
+
+	if (!nm_platform_netns_create(NM_PLATFORM_GET, netnsname, &netns_id)) {
+		g_object_unref(netns);
+		return;
+	}
+
+	nm_netns_set_id(netns, netns_id);
+
 	path = nm_netns_export(netns);
 	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
 	g_object_ref (netns);
 
+	/* Activate loopback interface */
+	nm_platform_netns_activate(NM_PLATFORM_GET, netns_id);
+	nm_platform_link_set_up (NM_PLATFORM_GET, 1, NULL);
+	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
+
 	return;
-
-#if 0
-failure:
-        g_assert (error);
-        g_dbus_method_invocation_take_error (context, error);
-#endif
 }
-
 
 /**
  * nm_netns_controller_setup:
@@ -118,6 +139,11 @@ failure:
 void
 nm_netns_controller_setup (void)
 {
+	NMNetnsControllerPrivate *priv;
+
+	const char *path;
+	int netns_id;
+
         g_return_if_fail (!singleton_instance);
 
         singleton_instance = nm_netns_controller_new();
@@ -127,6 +153,31 @@ nm_netns_controller_setup (void)
         nm_log_dbg (LOGD_CORE, "setup %s singleton (%p, %s)",
 			"NMNetnsController", singleton_instance,
 			G_OBJECT_TYPE_NAME (singleton_instance));
+
+	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	/*
+	 * Create root network namespace
+	 */
+
+	priv->root_ns = nm_netns_new(NETNS_ROOT_NAME);
+
+	if (!nm_platform_netns_get_root(NM_PLATFORM_GET, NETNS_ROOT_NAME, &netns_id)) {
+		g_object_unref(priv->root_ns);
+		priv->root_ns = NULL;
+
+		/*
+		 * NETNS support should be disabled because setup
+		 * failed!
+		 */
+		return;
+	}
+
+	nm_netns_set_id(priv->root_ns, netns_id);
+
+	path = nm_netns_export(priv->root_ns);
+	g_hash_table_insert(priv->network_namespaces, (gpointer)path, priv->root_ns);
+	g_object_ref (priv->root_ns);
 }
 
 NMNetnsController *

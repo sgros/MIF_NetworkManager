@@ -230,6 +230,50 @@ nm_platform_check_support_user_ipv6ll (NMPlatform *self)
 	return !!supported;
 }
 
+gboolean
+nm_platform_netns_get_root(NMPlatform *self, const char *name, int *netns_id)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	if (!klass->netns_create)
+		return FALSE;
+
+	return klass->netns_get_root (self, name, netns_id);
+}
+
+gboolean
+nm_platform_netns_create(NMPlatform *self, const char *name, int *netns_id)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	if (!klass->netns_create)
+		return FALSE;
+
+	return klass->netns_create (self, name, netns_id);
+}
+
+gboolean
+nm_platform_netns_destroy(NMPlatform *self)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	if (!klass->netns_destroy)
+		return FALSE;
+
+	return klass->netns_destroy (self);
+}
+
+gboolean
+nm_platform_netns_activate(NMPlatform *self, int netns_id)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	if (!klass->netns_activate)
+		return FALSE;
+
+	return klass->netns_activate (self, netns_id);
+}
+
 /**
  * nm_platform_process_events:
  * @self: platform instance

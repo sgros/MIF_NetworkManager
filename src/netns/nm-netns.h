@@ -45,7 +45,7 @@ typedef struct {
 	NMExportedObjectClass parent_class;
 } NMNetnsClass;
 
-#define NM_NETNS_NAME			"netns-name"
+#define NM_NETNS_NAME			"name"
 
 GType nm_netns_get_type (void);
 
@@ -53,6 +53,9 @@ const char *nm_netns_export(NMNetns *self);
 
 void nm_netns_set_name(NMNetns *netns, const char *name);
 const char *nm_netns_get_name(NMNetns *netns);
+
+void nm_netns_set_id(NMNetns *self, int netns_id);
+int nm_netns_get_id(NMNetns *self);
 
 NMNetns *nm_netns_new(const char *netns_name);
 
