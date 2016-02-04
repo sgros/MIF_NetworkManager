@@ -2410,6 +2410,14 @@ nm_linux_platform_setup (void)
 	              NULL);
 }
 
+NMPlatform *
+nm_linux_platform_new (void)
+{
+	return g_object_new (NM_TYPE_LINUX_PLATFORM,
+	              NM_PLATFORM_REGISTER_SINGLETON, FALSE,
+	              NULL);
+}
+
 /******************************************************************/
 
 static void
@@ -2619,7 +2627,7 @@ process_events (NMPlatform *platform)
 /******************************************************************/
 
 static gboolean
-netns_get_root(NMPlatform *platform, const char *name, int *netns_id)
+netns_create_root(NMPlatform *platform, const char *name, int *netns_id)
 {
 	char filename[PATHMAX];
 
@@ -6279,7 +6287,7 @@ nm_linux_platform_class_init (NMLinuxPlatformClass *klass)
 	platform_class->check_support_kernel_extended_ifa_flags = check_support_kernel_extended_ifa_flags;
 	platform_class->check_support_user_ipv6ll = check_support_user_ipv6ll;
 
-	platform_class->netns_get_root = netns_get_root;
+	platform_class->netns_create_root = netns_create_root;
 	platform_class->netns_create = netns_create;
 	platform_class->netns_destroy = netns_destroy;
 	platform_class->netns_activate = netns_activate;

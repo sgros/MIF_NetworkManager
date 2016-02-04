@@ -30,6 +30,8 @@
 
 #include "nm-exported-object.h"
 
+#include "nm-platform.h"
+
 #define NM_TYPE_NETNS            (nm_netns_get_type ())
 #define NM_NETNS(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_NETNS, NMNetns))
 #define NM_NETNS_CLASS(klass)    (G_TYPE_CHECK_CLASS_CAST ((klass),  NM_TYPE_NETNS, NMNetnsClass))
@@ -56,6 +58,9 @@ const char *nm_netns_get_name(NMNetns *netns);
 
 void nm_netns_set_id(NMNetns *self, int netns_id);
 int nm_netns_get_id(NMNetns *self);
+
+void nm_netns_set_platform(NMNetns *self, NMPlatform *platform);
+NMPlatform * nm_netns_get_platform(NMNetns *self);
 
 NMNetns *nm_netns_new(const char *netns_name);
 

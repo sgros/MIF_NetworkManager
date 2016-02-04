@@ -51,6 +51,11 @@ GType nm_netns_controller_get_type (void);
 
 void nm_netns_controller_setup (void);
 
+void nm_netns_controller_activate_root_netns(NMNetnsController *self);
+
+NMPlatform * nm_netns_controller_get_active_platform(NMNetnsController *self);
+NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);
+
 NMNetnsController *nm_netns_controller_new(void);
 
 #endif  /* __NM_NETNS_CONTROLLER_H__ */

@@ -30,6 +30,7 @@
 #include <gmodule.h>
 #include <nm-dbus-interface.h>
 
+#include "nm-platform.h"
 #include "nm-netns.h"
 
 #include "nmdbus-netns.h"
@@ -58,6 +59,11 @@ typedef struct {
 	 * directory.
 	 */
 	char *name;
+
+	/*
+	 * Platform interaction layer
+	 */
+	NMPlatform *platform;
 } NMNetnsPrivate;
 
 /**************************************************************/
@@ -109,6 +115,26 @@ nm_netns_get_id(NMNetns *self)
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
 	return priv->fd;
+}
+
+void
+nm_netns_set_platform(NMNetns *self, NMPlatform *platform)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	/*
+	 * TODO/BUG: Where is unref?!?!?
+	 */
+	g_object_ref(platform);
+	priv->platform = platform;
+}
+
+NMPlatform *
+nm_netns_get_platform(NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	return priv->platform;
 }
 
 /**************************************************************/
