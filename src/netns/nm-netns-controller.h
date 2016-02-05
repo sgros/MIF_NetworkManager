@@ -29,6 +29,7 @@
 #include "nm-types.h"
 
 #include "nm-exported-object.h"
+#include "nm-platform.h"
 
 #define NM_TYPE_NETNS_CONTROLLER            (nm_netns_controller_get_type ())
 #define NM_NETNS_CONTROLLER(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_NETNS_CONTROLLER, NMNetnsController))
