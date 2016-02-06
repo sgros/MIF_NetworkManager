@@ -173,7 +173,7 @@ remove_device (NMNetns *self,
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
-	nm_log_dbg (LOGD_DEVICE, "(%s): removing device (allow_unmanage %d, managed %d)",
+	nm_log_dbg (LOGD_NETNS, "(%s): removing device (allow_unmanage %d, managed %d)",
 		    nm_device_get_iface (device), allow_unmanage, nm_device_get_managed (device));
 
 	if (allow_unmanage && nm_device_get_managed (device)) {
@@ -340,7 +340,7 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 #endif
 
 	dbus_path = nm_exported_object_export (NM_EXPORTED_OBJECT (device));
-	nm_log_info (LOGD_DEVICE, "(%s): new %s device (%s)", iface, type_desc, dbus_path);
+	nm_log_info (LOGD_NETNS, "(%s): new %s device (%s)", iface, type_desc, dbus_path);
 
 	nm_device_finish_init (device);
 
@@ -401,7 +401,7 @@ platform_link_added (NMNetns *self,
 			return;
 		}
 
-		nm_log_dbg (LOGD_DEVICE, "(%s): failed to realize from plink: '%s'",
+		nm_log_dbg (LOGD_NETNS, "(%s): failed to realize from plink: '%s'",
 			    plink->name, error->message);
 		g_clear_error (&error);
 
@@ -416,7 +416,7 @@ platform_link_added (NMNetns *self,
 		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, &ignore, &error);
 		if (!device) {
 			if (!ignore) {
-				nm_log_warn (LOGD_HW, "%s: factory failed to create device: %s",
+				nm_log_warn (LOGD_NETNS, "%s: factory failed to create device: %s",
 					     plink->name, error->message);
 				g_clear_error (&error);
 			}
@@ -431,7 +431,7 @@ platform_link_added (NMNetns *self,
 		case NM_LINK_TYPE_OLPC_MESH:
 		case NM_LINK_TYPE_TEAM:
 		case NM_LINK_TYPE_WIFI:
-			nm_log_info (LOGD_HW, "(%s): '%s' plugin not available; creating generic device",
+			nm_log_info (LOGD_NETNS, "(%s): '%s' plugin not available; creating generic device",
 				     plink->name, nm_link_type_to_string (plink->type));
 			nm_plugin_missing = TRUE;
 			/* fall through */
@@ -448,7 +448,7 @@ platform_link_added (NMNetns *self,
 			add_device (self, device, NULL);
 			nm_device_realize_finish (device, plink);
 		} else {
-			nm_log_warn (LOGD_DEVICE, "%s: failed to realize device: %s",
+			nm_log_warn (LOGD_NETNS, "%s: failed to realize device: %s",
 				     plink->name, error->message);
 			g_clear_error (&error);
 		}
@@ -504,7 +504,7 @@ _platform_link_cb_idle (PlatformLinkCbData *data)
 			if (nm_device_is_software (device)) {
 				/* Our software devices stick around until their connection is removed */
 				if (!nm_device_unrealize (device, FALSE, &error)) {
-					nm_log_warn (LOGD_DEVICE, "(%s): failed to unrealize: %s",
+					nm_log_warn (LOGD_NETNS, "(%s): failed to unrealize: %s",
 						     nm_device_get_iface (device),
 						     error->message);
 					g_clear_error (&error);
@@ -531,6 +531,8 @@ platform_link_cb (NMPlatform *platform,
 		  gpointer user_data)
 {
 	PlatformLinkCbData *data;
+
+	
 
 	switch (change_type) {
 	case NM_PLATFORM_SIGNAL_ADDED:
