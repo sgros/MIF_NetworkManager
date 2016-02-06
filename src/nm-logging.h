@@ -69,6 +69,7 @@ typedef enum  { /*< skip >*/
 	LOGD_DCB        = (1LL << 32), /* Data Center Bridging */
 	LOGD_DISPATCH   = (1LL << 33),
 	LOGD_AUDIT      = (1LL << 34),
+	LOGD_NETNS      = (1LL << 35),
 
 	__LOGD_MAX,
 	LOGD_ALL       = ((__LOGD_MAX - 1LL) << 1) - 1LL,

@@ -194,6 +194,8 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
 			const char *netnsname)
 {
 	create_new_namespace(self, netnsname, FALSE);
+
+	g_dbus_method_invocation_return_value (context, NULL);
 }
 
 /**
@@ -216,11 +218,11 @@ nm_netns_controller_setup (void)
 
         nm_singleton_instance_register ();
 
-        nm_log_dbg (LOGD_CORE, "setup %s singleton (%p, %s)",
+        nm_log_dbg (LOGD_NETNS, "setup %s singleton (%p, %s)",
 			"NMNetnsController", singleton_instance,
 			G_OBJECT_TYPE_NAME (singleton_instance));
 
-	// TODO/BUG: What about error handling?
+	/* TODO/BUG: What about error handling? */
 	create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE);
 }
 
@@ -326,9 +328,9 @@ nm_netns_controller_class_init (NMNetnsControllerClass *klass)
 // TODO: Signal that namespace is removed
 
 	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
-                                                NMDBUS_TYPE_NETWORK_NAMESPACES_CONTROLLER_SKELETON,
-                                                "ListNetworkNamespaces", impl_netns_controller_list_namespaces,
-                                                "AddNetworkNamespace", impl_netns_controller_add_namespace,
-                                                NULL);
+						NMDBUS_TYPE_NETWORK_NAMESPACES_CONTROLLER_SKELETON,
+						"ListNetworkNamespaces", impl_netns_controller_list_namespaces,
+						"AddNetworkNamespace", impl_netns_controller_add_namespace,
+						NULL);
 }
 
