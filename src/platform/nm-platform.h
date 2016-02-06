@@ -617,7 +617,7 @@ typedef struct {
 
 	gboolean (*netns_create_root) (NMPlatform *platform, const char *name, int *netns_id);
 	gboolean (*netns_create) (NMPlatform *platform, const char *name, int *netns_id);
-	gboolean (*netns_destroy) (NMPlatform *platform);
+	void (*netns_destroy) (NMPlatform *platform, const char *name);
 	gboolean (*netns_activate) (NMPlatform *platform, int netns_id);
 } NMPlatformClass;
 
@@ -924,7 +924,7 @@ gboolean nm_platform_check_support_user_ipv6ll (NMPlatform *self);
 
 gboolean nm_platform_netns_create_root(NMPlatform *self, const char *name, int *netns_id);
 gboolean nm_platform_netns_create(NMPlatform *self, const char *name, int *netns_id);
-gboolean nm_platform_netns_destroy(NMPlatform *self);
+void nm_platform_netns_destroy(NMPlatform *self, const char *name);
 gboolean nm_platform_netns_activate(NMPlatform *self, int netns_id);
 
 const char *nm_platform_link_flags2str (unsigned flags, char *buf, gsize len);

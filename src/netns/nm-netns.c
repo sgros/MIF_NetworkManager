@@ -228,8 +228,6 @@ remove_device (NMNetns *self,
 #endif
 }
 
-
-
 /**
  * add_device:
  * @self: the #NMNetns
@@ -569,6 +567,19 @@ nm_netns_setup(NMNetns *self)
 	return TRUE;
 }
 
+void
+nm_netns_stop(NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	while (priv->devices)
+		remove_device (self, NM_DEVICE (priv->devices->data), TRUE, TRUE);
+
+	nm_platform_netns_destroy(priv->platform, priv->name);
+
+	g_object_unref(priv->platform);
+}
+
 NMNetns *
 nm_netns_new (const char *netns_name)
 {
@@ -629,24 +640,6 @@ nm_netns_init (NMNetns *self)
 {
 }
 
-static void
-constructed (GObject *object)
-{
-	G_OBJECT_CLASS (nm_netns_parent_class)->constructed (object);
-}
-
-static void
-finalize (GObject *object)
-{
-	G_OBJECT_CLASS (nm_netns_parent_class)->finalize (object);
-}
-
-static void
-dispose (GObject *object)
-{
-	G_OBJECT_CLASS (nm_netns_parent_class)->dispose (object);
-}
-
 static gboolean
 device_is_real (GObject *device, gpointer user_data)
 {
@@ -703,11 +696,8 @@ nm_netns_class_init (NMNetnsClass *klass)
 	exported_object_class->export_path = NM_DBUS_PATH_NETNS "/%u";
 
         /* virtual methods */
-	object_class->constructed = constructed;
 	object_class->set_property = set_property;
 	object_class->get_property = get_property;
-	object_class->dispose = dispose;
-	object_class->finalize = finalize;
 
 	/* Network namespace's name */
 	g_object_class_install_property

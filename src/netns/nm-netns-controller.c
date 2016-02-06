@@ -225,6 +225,32 @@ nm_netns_controller_setup (void)
 }
 
 NMNetnsController *
+nm_netns_controller_get(void)
+{
+	return singleton_instance;
+}
+
+void
+nm_netns_controller_stop (NMNetnsController *self)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	GHashTableIter iter;
+	gpointer value;
+
+	g_hash_table_iter_init (&iter, priv->network_namespaces);
+	while (g_hash_table_iter_next (&iter, NULL, &value))
+		nm_netns_stop(value);
+
+	g_hash_table_destroy (priv->network_namespaces);
+	priv->network_namespaces = NULL;
+
+	g_object_unref(priv->root_ns);
+	g_object_unref(priv->active_ns);
+
+	priv->root_ns = priv->active_ns = NULL;
+}
+
+NMNetnsController *
 nm_netns_controller_new (void)
 {
 	NMNetnsController *self;
@@ -246,23 +272,6 @@ nm_netns_controller_init (NMNetnsController *self)
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	priv->network_namespaces = g_hash_table_new_full (g_str_hash, g_str_equal, NULL, g_object_unref);
-}
-
-static void
-dispose (GObject *object)
-{
-	G_OBJECT_CLASS (nm_netns_controller_parent_class)->dispose (object);
-}
-
-static void
-finalize (GObject *object)
-{
-	NMNetnsController *self = NM_NETNS_CONTROLLER (object);
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
-
-	g_hash_table_destroy (priv->network_namespaces);
-
-	G_OBJECT_CLASS (nm_netns_controller_parent_class)->finalize (object);
 }
 
 /******************************************************************/
@@ -303,8 +312,6 @@ nm_netns_controller_class_init (NMNetnsControllerClass *klass)
 	/* virtual methods */
 	object_class->set_property = set_property;
 	object_class->get_property = get_property;
-	object_class->dispose = dispose;
-	object_class->finalize = finalize;
 
 	g_object_class_install_property
 	 (object_class, PROP_REGISTER_SINGLETON,

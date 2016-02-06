@@ -88,4 +88,6 @@ NMNetns *nm_netns_new(const char *netns_name);
 
 gboolean nm_netns_setup(NMNetns *netns);
 
+void nm_netns_stop(NMNetns *netns);
+
 #endif  /* __NM_NETNS_H__ */

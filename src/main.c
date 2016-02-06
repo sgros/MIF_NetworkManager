@@ -496,6 +496,8 @@ done:
 
 	nm_manager_stop (nm_manager_get ());
 
+	nm_netns_controller_stop (nm_netns_controller_get ());
+
 	if (global_opt.pidfile && wrote_pidfile)
 		unlink (global_opt.pidfile);
 

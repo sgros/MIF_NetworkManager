@@ -252,15 +252,13 @@ nm_platform_netns_create(NMPlatform *self, const char *name, int *netns_id)
 	return klass->netns_create (self, name, netns_id);
 }
 
-gboolean
-nm_platform_netns_destroy(NMPlatform *self)
+void
+nm_platform_netns_destroy(NMPlatform *self, const char *name)
 {
-	_CHECK_SELF (self, klass, FALSE);
+	_CHECK_SELF_VOID (self, klass);
 
-	if (!klass->netns_destroy)
-		return FALSE;
-
-	return klass->netns_destroy (self);
+	if (klass->netns_destroy)
+		klass->netns_destroy (self, name);
 }
 
 gboolean

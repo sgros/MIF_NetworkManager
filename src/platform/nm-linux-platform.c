@@ -2742,10 +2742,19 @@ netns_create(NMPlatform *platform, const char *name, int *netns_id)
 	return TRUE;
 }
 
-static gboolean
-netns_destroy(NMPlatform *platform)
+static void
+netns_destroy(NMPlatform *platform, const char *name)
 {
-	return FALSE;
+	char filename[PATHMAX];
+
+	strcpy(filename, NETNS_PATH);
+	strncat(filename, name, PATHMAX);
+
+	if (umount2(filename, MNT_DETACH) == 0) {
+		if (unlink(filename) < 0)
+			perror("unlink");
+	} else
+		perror("umount");
 }
 
 static gboolean
