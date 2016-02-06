@@ -80,6 +80,17 @@ void nm_netns_controller_activate_root_netns(NMNetnsController *self)
 
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
 	priv->active_ns = priv->root_ns;
+	g_object_ref(priv->root_ns);
+}
+
+void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+
+	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
+	g_object_unref(priv->root_ns);
+	priv->active_ns = netns;
+	g_object_ref(netns);
 }
 
 /******************************************************************/
@@ -138,18 +149,19 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 	} else {
 		/* Instantiate a new platform layer for the created network namespace */
 		nm_netns_set_platform(netns, nm_linux_platform_new());
+
+		nm_netns_controller_activate_root_netns(self);
 	}
 
-	/* Activate loopback interface in a new network namespace */
-	nm_platform_link_set_up (nm_netns_get_platform(netns), 1, NULL);
+	if (!isroot) {
+		if (!nm_netns_setup(netns)) {
+			g_object_unref(netns);
+			return FALSE;
+		}
+	}
 
 	path = nm_netns_export(netns);
 	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
-
-	nm_netns_controller_activate_root_netns(self);
-
-	if (isroot)
-		return TRUE;
 
 	return TRUE;
 }
@@ -209,7 +221,7 @@ nm_netns_controller_setup (void)
 			G_OBJECT_TYPE_NAME (singleton_instance));
 
 	// TODO/BUG: What about error handling?
-	create_new_namespace(singleton_instance, NETNS_ROOT_NAME, FALSE);
+	create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE);
 }
 
 NMNetnsController *

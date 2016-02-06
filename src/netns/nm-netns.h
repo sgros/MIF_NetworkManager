@@ -39,6 +39,26 @@
 #define NM_IS_NETNS_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  NM_TYPE_NETNS))
 #define NM_NETNS_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  NM_TYPE_NETNS, NMNetnsClass))
 
+#define NM_NETNS_VERSION "version"
+#define NM_NETNS_STATE "state"
+#define NM_NETNS_STARTUP "startup"
+#define NM_NETNS_NETWORKING_ENABLED "networking-enabled"
+#define NM_NETNS_WIRELESS_ENABLED "wireless-enabled"
+#define NM_NETNS_WIRELESS_HARDWARE_ENABLED "wireless-hardware-enabled"
+#define NM_NETNS_WWAN_ENABLED "wwan-enabled"
+#define NM_NETNS_WWAN_HARDWARE_ENABLED "wwan-hardware-enabled"
+#define NM_NETNS_WIMAX_ENABLED "wimax-enabled"
+#define NM_NETNS_WIMAX_HARDWARE_ENABLED "wimax-hardware-enabled"
+#define NM_NETNS_ACTIVE_CONNECTIONS "active-connections"
+#define NM_NETNS_CONNECTIVITY "connectivity"
+#define NM_NETNS_PRIMARY_CONNECTION "primary-connection"
+#define NM_NETNS_PRIMARY_CONNECTION_TYPE "primary-connection-type"
+#define NM_NETNS_ACTIVATING_CONNECTION "activating-connection"
+#define NM_NETNS_DEVICES "devices"
+#define NM_NETNS_METERED "metered"
+#define NM_NETNS_GLOBAL_DNS_CONFIGURATION "global-dns-configuration"
+#define NM_NETNS_ALL_DEVICES "all-devices"
+
 struct _NMNetns {
 	NMExportedObject parent_instance;
 };
@@ -53,6 +73,8 @@ GType nm_netns_get_type (void);
 
 const char *nm_netns_export(NMNetns *self);
 
+NMDevice *nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex);
+
 void nm_netns_set_name(NMNetns *netns, const char *name);
 const char *nm_netns_get_name(NMNetns *netns);
 
@@ -63,5 +85,7 @@ void nm_netns_set_platform(NMNetns *self, NMPlatform *platform);
 NMPlatform * nm_netns_get_platform(NMNetns *self);
 
 NMNetns *nm_netns_new(const char *netns_name);
+
+gboolean nm_netns_setup(NMNetns *netns);
 
 #endif  /* __NM_NETNS_H__ */
