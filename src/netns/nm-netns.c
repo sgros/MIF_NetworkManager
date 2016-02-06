@@ -255,10 +255,8 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	/* No duplicates */
 	ifindex = nm_device_get_ifindex (device);
 	if (ifindex > 0 && nm_netns_get_device_by_ifindex (self, ifindex)) {
-#if 0
 		g_set_error (error, NM_NETNS_ERROR, NM_NETNS_ERROR_FAILED,
 			     "A device with ifindex %d already exits", ifindex);
-#endif
 		return FALSE;
 	}
 

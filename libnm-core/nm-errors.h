@@ -316,4 +316,25 @@ typedef enum {
 #define NM_VPN_PLUGIN_ERROR      (nm_vpn_plugin_error_quark ())
 GQuark nm_vpn_plugin_error_quark    (void);
 
+/**
+ * NMNetnsError:
+ * @NM_NETNS_ERROR_FAILED: unknown or unclassified error
+ * @NM_NETNS_ERROR_PERMISSION_DENIED: Permission denied.
+ * @NM_NETNS_ERROR_UNKNOWN_DEVICE: The requested device is not known.
+ *
+ * Errors related to the network namespace instance network management
+ * interface of NetworkManager. These may be returned from #NMClient
+ * methods that invoke D-Bus operations on the
+ * "org.freedesktop.NetworkManager.NetNsInstance" interface, and correspond to D-Bus
+ * errors in that namespace.
+ */
+typedef enum {
+	NM_NETNS_ERROR_FAILED = 0,                  /*< nick=Failed >*/
+	NM_NETNS_ERROR_PERMISSION_DENIED,           /*< nick=PermissionDenied >*/
+	NM_NETNS_ERROR_UNKNOWN_DEVICE,              /*< nick=UnknownDevice >*/
+} NMNetnsError;
+
+#define NM_NETNS_ERROR (nm_netns_error_quark ())
+GQuark nm_netns_error_quark (void);
+
 #endif /* __NM_ERRORS_H__ */

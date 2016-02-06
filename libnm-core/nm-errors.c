@@ -35,6 +35,7 @@ G_DEFINE_QUARK (nm-manager-error-quark, nm_manager_error)
 G_DEFINE_QUARK (nm-secret-agent-error-quark, nm_secret_agent_error)
 G_DEFINE_QUARK (nm-settings-error-quark, nm_settings_error)
 G_DEFINE_QUARK (nm-vpn-plugin-error-quark, nm_vpn_plugin_error)
+G_DEFINE_QUARK (nm-netns-error-quark, nm_netns_error)
 
 static void
 register_error_domain (GQuark domain,
@@ -85,4 +86,7 @@ _nm_dbus_errors_init (void)
 	register_error_domain (NM_VPN_PLUGIN_ERROR,
 	                       NM_DBUS_VPN_ERROR_PREFIX,
 	                       NM_TYPE_VPN_PLUGIN_ERROR);
+	register_error_domain (NM_NETNS_ERROR,
+	                       NM_DBUS_INTERFACE_NETNS,
+	                       NM_TYPE_NETNS_ERROR);
 }
