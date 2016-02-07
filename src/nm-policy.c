@@ -44,6 +44,7 @@
 #include "nm-utils.h"
 #include "nm-core-internal.h"
 #include "nm-manager.h"
+#include "nm-netns-controller.h"
 #include "nm-settings.h"
 #include "nm-settings-connection.h"
 #include "nm-dhcp4-config.h"
@@ -101,7 +102,7 @@ get_best_ip4_device (NMPolicy *self, gboolean fully_activated)
 {
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (self);
 
-	return nm_default_route_manager_ip4_get_best_device (nm_default_route_manager_get (),
+	return nm_default_route_manager_ip4_get_best_device (nm_netns_controller_get_default_route_manager (),
 	                                                     nm_manager_get_devices (priv->manager),
 	                                                     fully_activated,
 	                                                     priv->default_device4);
@@ -112,7 +113,7 @@ get_best_ip6_device (NMPolicy *self, gboolean fully_activated)
 {
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (self);
 
-	return nm_default_route_manager_ip6_get_best_device (nm_default_route_manager_get (),
+	return nm_default_route_manager_ip6_get_best_device (nm_netns_controller_get_default_route_manager (),
 	                                                     nm_manager_get_devices (priv->manager),
 	                                                     fully_activated,
 	                                                     priv->default_device6);
@@ -389,7 +390,7 @@ get_best_ip4_config (NMPolicy *self,
                      NMDevice **out_device,
                      NMVpnConnection **out_vpn)
 {
-	return nm_default_route_manager_ip4_get_best_config (nm_default_route_manager_get (),
+	return nm_default_route_manager_ip4_get_best_config (nm_netns_controller_get_default_route_manager (),
 	                                                     ignore_never_default,
 	                                                     out_ip_iface,
 	                                                     out_ac,
@@ -484,7 +485,7 @@ get_best_ip6_config (NMPolicy *self,
                      NMDevice **out_device,
                      NMVpnConnection **out_vpn)
 {
-	return nm_default_route_manager_ip6_get_best_config (nm_default_route_manager_get (),
+	return nm_default_route_manager_ip6_get_best_config (nm_netns_controller_get_default_route_manager (),
 	                                                     ignore_never_default,
 	                                                     out_ip_iface,
 	                                                     out_ac,

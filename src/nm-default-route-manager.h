@@ -45,8 +45,6 @@ typedef struct {
 
 GType nm_default_route_manager_get_type (void);
 
-NMDefaultRouteManager *nm_default_route_manager_get (void);
-
 void nm_default_route_manager_ip4_update_default_route (NMDefaultRouteManager *manager, gpointer source);
 void nm_default_route_manager_ip6_update_default_route (NMDefaultRouteManager *manager, gpointer source);
 
@@ -68,6 +66,8 @@ NMIP6Config *nm_default_route_manager_ip6_get_best_config (NMDefaultRouteManager
                                                            NMActiveConnection **out_ac,
                                                            NMDevice **out_device,
                                                            NMVpnConnection **out_vpn);
+
+NMDefaultRouteManager *nm_default_route_manager_new (void);
 
 #endif  /* NM_DEFAULT_ROUTE_MANAGER_H */
 

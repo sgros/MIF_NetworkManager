@@ -46,6 +46,8 @@ extern unsigned int if_nametoindex (const char *__ifname);
 #include "nm-utils.h"
 #include "nm-setting-ip6-config.h"
 
+#include "nm-netns-controller-dummy.h"
+
 #if !defined(NM_DIST_VERSION)
 # define NM_DIST_VERSION VERSION
 #endif
@@ -429,6 +431,9 @@ main (int argc, char *argv[])
 	nm_log_info (LOGD_CORE, "nm-iface-helper (version " NM_DIST_VERSION ") is starting...");
 
 	/* Set up platform interaction layer */
+	nm_linux_platform_setup ();
+
+	/* Set up dummy network namespace control */
 	nm_linux_platform_setup ();
 
 	tmp = nm_platform_link_get_address (NM_PLATFORM_GET, ifindex, &hwaddr_len);

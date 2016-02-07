@@ -47,6 +47,6 @@ gboolean nm_route_manager_route_flush (NMRouteManager *self, int ifindex);
 
 void nm_route_manager_ip4_route_register_device_route_purge_list (NMRouteManager *self, GArray *device_route_purge_list);
 
-NMRouteManager *nm_route_manager_get (void);
+NMRouteManager *nm_route_manager_new (void);
 
 #endif  /* NM_ROUTE_MANAGER_H */

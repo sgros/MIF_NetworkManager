@@ -31,6 +31,8 @@
 #include <nm-dbus-interface.h>
 
 #include "nm-config.h"
+#include "nm-default-route-manager.h"
+#include "nm-route-manager.h"
 #include "nm-device.h"
 #include "nm-device-generic.h"
 #include "nm-platform.h"
@@ -75,6 +77,17 @@ typedef struct {
 	 * List of devices in this namespace
 	 */
 	GSList *devices;
+
+	/*
+	 * Default route manager instance for the namespace
+	 */
+	NMDefaultRouteManager *default_route_manager;
+
+	/*
+	 * Route manager instance for the namespace
+	 */
+	NMRouteManager *route_manager;
+
 } NMNetnsPrivate;
 
 /**************************************************************/
@@ -146,6 +159,22 @@ nm_netns_get_platform(NMNetns *self)
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
 	return priv->platform;
+}
+
+NMDefaultRouteManager *
+nm_netns_get_default_route_manager(NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	return priv->default_route_manager;
+}
+
+NMRouteManager *
+nm_netns_get_route_manager(NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	return priv->route_manager;
 }
 
 /**************************************************************/
@@ -586,9 +615,14 @@ NMNetns *
 nm_netns_new (const char *netns_name)
 {
 	NMNetns *self;
+	NMNetnsPrivate *priv;
 
 	self = g_object_new (NM_TYPE_NETNS, NULL);
 	nm_netns_set_name(self, netns_name);
+
+	priv = NM_NETNS_GET_PRIVATE (self);
+	priv->default_route_manager = nm_default_route_manager_new();
+	priv->route_manager = nm_route_manager_new();
 
 	return self;
 }

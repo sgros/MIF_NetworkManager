@@ -4,6 +4,7 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/libnm-core \
 	-I$(top_builddir)/libnm-core \
 	-I$(top_srcdir)/src/platform \
+	-I$(top_srcdir)/src/netns \
 	-I$(top_srcdir)/src/devices \
 	-I$(top_srcdir)/src/systemd/ \
 	-I$(top_srcdir)/src/systemd/src/systemd/ \

@@ -23,8 +23,8 @@
  * (C) Copyright 2008 Novell, Inc.
  */
 
-#ifndef __NM_NETNS_CONTROLLER_H__
-#define __NM_NETNS_CONTROLLER_H__
+#ifndef __NM_NETNS_CONTROLLER_DUMMY_H__
+#define __NM_NETNS_CONTROLLER_DUMMY_H__
 
 #include "nm-types.h"
 
@@ -58,13 +58,6 @@ NMNetnsController * nm_netns_controller_get (void);
 
 void nm_netns_controller_stop (NMNetnsController *self);
 
-void nm_netns_controller_activate_root_netns(NMNetnsController *self);
-void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns);
-
-NMPlatform * nm_netns_controller_get_active_platform(NMNetnsController *self);
-NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);
-
-NMDefaultRouteManager *nm_netns_controller_get_default_route_manager(void);
 NMRouteManager *nm_netns_controller_get_route_manager(void);
 
 NMNetnsController *nm_netns_controller_new(void);

@@ -59,8 +59,6 @@ typedef struct {
 
 G_DEFINE_TYPE (NMDefaultRouteManager, nm_default_route_manager, G_TYPE_OBJECT)
 
-NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get, NM_TYPE_DEFAULT_ROUTE_MANAGER);
-
 #define _NMLOG_PREFIX_NAME   "default-route"
 #undef  _NMLOG_ENABLED
 #define _NMLOG_ENABLED(level, addr_family) \
@@ -82,12 +80,10 @@ NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get,
             \
             _nm_log (__level, __domain, 0, \
                      "%s: " _NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
-                     self != singleton_instance \
-                        ? nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
-                                          _NMLOG2_PREFIX_NAME, \
-                                          __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
-                                          self) \
-                        : _NMLOG2_PREFIX_NAME \
+                     nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
+                                     _NMLOG2_PREFIX_NAME, \
+                                     __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
+                                     self) \
                      _NM_UTILS_MACRO_REST(__VA_ARGS__)); \
         } \
     } G_STMT_END
@@ -108,12 +104,10 @@ NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get,
             \
             _nm_log (__level, __domain, 0, \
                      "%s: entry[%u/%s:%p:%s:%c:%csync]: "_NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
-                     self != singleton_instance \
-                        ? nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
-                                          _NMLOG2_PREFIX_NAME, \
-                                          __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
-                                          self) \
-                        : _NMLOG2_PREFIX_NAME, \
+                     nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
+                                     _NMLOG2_PREFIX_NAME, \
+                                     __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
+                                     self), \
                      __entry_idx, \
                      NM_IS_DEVICE (__entry->source.pointer) ? "dev" : "vpn", \
                      __entry->source.pointer, \
@@ -1377,6 +1371,14 @@ _platform_changed_cb (NMPlatform *platform,
 	default:
 		g_return_if_reached ();
 	}
+}
+
+/***********************************************************************************/
+
+NMDefaultRouteManager *
+nm_default_route_manager_new(void)
+{
+	return g_object_new(NM_TYPE_DEFAULT_ROUTE_MANAGER, NULL);
 }
 
 /***********************************************************************************/

@@ -230,26 +230,15 @@ nm_platform_check_support_user_ipv6ll (NMPlatform *self)
 	return !!supported;
 }
 
-gboolean
-nm_platform_netns_create_root(NMPlatform *self, const char *name, int *netns_id)
+int
+nm_platform_netns_create(NMPlatform *self, const char *name, gboolean isroot)
 {
-	_CHECK_SELF (self, klass, FALSE);
+	_CHECK_SELF (self, klass, -1);
 
 	if (!klass->netns_create)
 		return FALSE;
 
-	return klass->netns_create_root (self, name, netns_id);
-}
-
-gboolean
-nm_platform_netns_create(NMPlatform *self, const char *name, int *netns_id)
-{
-	_CHECK_SELF (self, klass, FALSE);
-
-	if (!klass->netns_create)
-		return FALSE;
-
-	return klass->netns_create (self, name, netns_id);
+	return klass->netns_create (self, name, isroot);
 }
 
 void

@@ -45,6 +45,7 @@
 #include "nm-config.h"
 #include "nm-vpn-plugin-info.h"
 #include "nm-vpn-manager.h"
+#include "nm-netns-controller.h"
 
 #include "nmdbus-vpn-connection.h"
 
@@ -2381,8 +2382,8 @@ nm_vpn_connection_init (NMVpnConnection *self)
 
 	priv->vpn_state = STATE_WAITING;
 	priv->secrets_idx = SECRETS_REQ_SYSTEM;
-	priv->default_route_manager = g_object_ref (nm_default_route_manager_get ());
-	priv->route_manager = g_object_ref (nm_route_manager_get ());
+	priv->default_route_manager = g_object_ref (nm_netns_controller_get_default_route_manager ());
+	priv->route_manager = g_object_ref (nm_netns_controller_get_route_manager ());
 }
 
 static void

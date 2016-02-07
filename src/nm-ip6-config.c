@@ -35,6 +35,7 @@
 #include "nm-core-internal.h"
 #include "NetworkManagerUtils.h"
 #include "nm-macros-internal.h"
+#include "nm-netns-controller.h"
 
 #include "nmdbus-ip6-config.h"
 
@@ -438,7 +439,7 @@ nm_ip6_config_commit (const NMIP6Config *config, int ifindex, gboolean routes_fu
 			g_array_append_vals (routes, route, 1);
 		}
 
-		success = nm_route_manager_ip6_route_sync (nm_route_manager_get (), ifindex, routes, TRUE, routes_full_sync);
+		success = nm_route_manager_ip6_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, routes_full_sync);
 		g_array_unref (routes);
 	}
 

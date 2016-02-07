@@ -503,6 +503,9 @@ libnm_iface_helper_la_SOURCES = \
 	dhcp-manager/nm-dhcp-manager.c \
 	dhcp-manager/nm-dhcp-manager.h \
 	\
+	netns/nm-netns-controller-dummy.c \
+	netns/nm-netns-controller-dummy.h \
+	\
 	platform/nm-linux-platform.c \
 	platform/nm-linux-platform.h \
 	platform/nm-platform.c \

@@ -79,6 +79,10 @@ void nm_netns_controller_activate_root_netns(NMNetnsController *self)
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
+
+	if (priv->active_ns)
+		g_object_unref(priv->active_ns);
+
 	priv->active_ns = priv->root_ns;
 	g_object_ref(priv->root_ns);
 }
@@ -111,6 +115,22 @@ nm_netns_controller_get_root_platform(NMNetnsController *self)
 	return nm_netns_get_platform(priv->root_ns);
 }
 
+NMDefaultRouteManager *
+nm_netns_controller_get_default_route_manager(void)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	return nm_netns_get_default_route_manager(priv->active_ns);
+}
+
+NMRouteManager *
+nm_netns_controller_get_route_manager(void)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	return nm_netns_get_route_manager(priv->active_ns);
+}
+
 /******************************************************************/
 
 static gboolean
@@ -129,7 +149,8 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
          * When creating new namespace it isn't important which platform
          * module we are using, so use main one.
          */
-	if (!nm_platform_netns_create(NM_PLATFORM_GET, netnsname, &netns_id)) {
+	if ((netns_id = nm_platform_netns_create(NM_PLATFORM_GET, netnsname, isroot)) == -1) {
+        	nm_log_err (LOGD_NETNS, "error creating namespace %s ", netnsname);
 		g_object_unref(netns);
 		return FALSE;
 	}
@@ -149,12 +170,12 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 	} else {
 		/* Instantiate a new platform layer for the created network namespace */
 		nm_netns_set_platform(netns, nm_linux_platform_new());
-
-		nm_netns_controller_activate_root_netns(self);
 	}
+	nm_netns_controller_activate_root_netns(self);
 
 	if (!isroot) {
 		if (!nm_netns_setup(netns)) {
+	        	nm_log_dbg (LOGD_NETNS, "error setting up namespace %s ", netnsname);
 			g_object_unref(netns);
 			return FALSE;
 		}
@@ -265,6 +286,9 @@ nm_netns_controller_new (void)
 	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	nm_exported_object_export (NM_EXPORTED_OBJECT (self));
+
+        nm_log_dbg (LOGD_NETNS, "Created network namespace controller.");
+
 	return self;
 }
 

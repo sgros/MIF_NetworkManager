@@ -1487,6 +1487,9 @@ main (int argc, char **argv)
 
 	init_tests (&argc, &argv);
 
+	/* Set up network namespace controller */
+	nm_netns_controller_setup ();
+
 	if (   nmtstp_is_root_test ()
 	    && (geteuid () != 0 || getegid () != 0)) {
 		if (   g_getenv ("NMTST_FORCE_REAL_ROOT")

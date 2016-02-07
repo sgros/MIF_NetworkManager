@@ -117,9 +117,9 @@
 #define IP6_FLOWINFO_TCLASS_SHIFT       20
 #define IP6_FLOWINFO_FLOWLABEL_MASK     0x000FFFFF
 
-// network namespace related constants
+/* network namespace related constants */
 #define PATHMAX				4096
-#define NETNS_PATH			"/var/run/netns/"
+#define NETNS_PATH			"/var/run/netns/"		/* must end with / */
 #define SELF_NET_PATH			"/proc/self/ns/net"
 
 /*********************************************************************************************/
@@ -2654,10 +2654,11 @@ process_events (NMPlatform *platform)
 
 /******************************************************************/
 
-static gboolean
-netns_create_root(NMPlatform *platform, const char *name, int *netns_id)
+static int
+netns_create(NMPlatform *platform, const char *name, gboolean isroot)
 {
 	char filename[PATHMAX];
+	int netns_id;
 
 	strcpy(filename, NETNS_PATH);
 	strncat(filename, name, PATHMAX);
@@ -2670,76 +2671,37 @@ netns_create_root(NMPlatform *platform, const char *name, int *netns_id)
 	/*
 	 * Create a node in /var/run/netns 
 	 */
-	if ((*netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
-		perror("create");
-		return FALSE;
+	if ((netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
+		nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'", filename, strerror(errno));
+		return -1;
+	}
+
+	close(netns_id);
+	netns_id = -1;
+
+	if (!isroot) {
+		if (unshare(CLONE_NEWNET) < 0) {
+			nm_log_err (LOGD_NETNS, "Failed to unshare network namespace with error '%s'", strerror(errno));
+			unlink(filename);
+			return -1;
+		}
 	}
 
 	if (mount(SELF_NET_PATH, filename, "none", MS_BIND, NULL) < 0) {
-		perror("mount");
-		close(*netns_id);
-		*netns_id = -1;
+		nm_log_err (LOGD_NETNS, "Failed to mount %s to %s with error '%s'",
+			    SELF_NET_PATH, filename, strerror(errno));
 		unlink(filename);
-		return FALSE;
+		return -1;
 	}
 
-	if ((*netns_id = open(filename, O_RDONLY)) == -1) {
-		perror("open");
-		*netns_id = -1;
+	if ((netns_id = open(filename, O_RDONLY)) == -1) {
+		nm_log_err (LOGD_NETNS, "Failed to open %s with error '%s'", filename, strerror(errno));
+		umount2(filename, MNT_DETACH);
 		unlink(filename);
-		return FALSE;
+		return -1;
 	}
 
-	return TRUE;
-}
-
-static gboolean
-netns_create(NMPlatform *platform, const char *name, int *netns_id)
-{
-	char filename[PATHMAX];
-
-	strcpy(filename, NETNS_PATH);
-	strncat(filename, name, PATHMAX);
-
-	/*
-	 * First, we have to check if the given name already
-	 * exists.
-	 */
-
-	/*
-	 * Create a node in /var/run/netns 
-	 */
-	if ((*netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
-		perror("create");
-		return FALSE;
-	}
-
-	close(*netns_id);
-
-	if (unshare(CLONE_NEWNET) < 0) {
-		perror("unshare");
-		close(*netns_id);
-		*netns_id = -1;
-		unlink(filename);
-		return FALSE;
-	}
-
-	if (mount(SELF_NET_PATH, filename, "none", MS_BIND, NULL) < 0) {
-		perror("mount");
-		close(*netns_id);
-		*netns_id = -1;
-		unlink(filename);
-		return FALSE;
-	}
-
-	if ((*netns_id = open(filename, O_RDONLY)) == -1) {
-		perror("open");
-		*netns_id = -1;
-		unlink(filename);
-		return FALSE;
-	}
-
-	return TRUE;
+	return netns_id;
 }
 
 static void
@@ -2752,16 +2714,16 @@ netns_destroy(NMPlatform *platform, const char *name)
 
 	if (umount2(filename, MNT_DETACH) == 0) {
 		if (unlink(filename) < 0)
-			perror("unlink");
+			nm_log_err (LOGD_NETNS, "Failed to unlink %s with error '%s'", filename, strerror(errno));
 	} else
-		perror("umount");
+		nm_log_err (LOGD_NETNS, "Failed to unmount2 %s with error '%s'", filename, strerror(errno));
 }
 
 static gboolean
 netns_activate(NMPlatform *platform, int netns_id)
 {
 	if (setns(netns_id, CLONE_NEWNET) < 0) {
-		perror("setns");
+		nm_log_err (LOGD_NETNS, "Failed to set network namespace with error '%s'", strerror(errno));
 		return FALSE;
 	}
 
@@ -6324,7 +6286,6 @@ nm_linux_platform_class_init (NMLinuxPlatformClass *klass)
 	platform_class->check_support_kernel_extended_ifa_flags = check_support_kernel_extended_ifa_flags;
 	platform_class->check_support_user_ipv6ll = check_support_user_ipv6ll;
 
-	platform_class->netns_create_root = netns_create_root;
 	platform_class->netns_create = netns_create;
 	platform_class->netns_destroy = netns_destroy;
 	platform_class->netns_activate = netns_activate;

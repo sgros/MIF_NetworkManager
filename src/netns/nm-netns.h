@@ -81,6 +81,12 @@ const char *nm_netns_get_name(NMNetns *netns);
 void nm_netns_set_id(NMNetns *self, int netns_id);
 int nm_netns_get_id(NMNetns *self);
 
+void nm_netns_set_default_route_manager(NMNetns *self, NMDefaultRouteManager *default_route_manager);
+NMDefaultRouteManager *nm_netns_get_default_route_manager(NMNetns *self);
+
+void nm_netns_set_route_manager(NMNetns *self, NMRouteManager *route_manager);
+NMRouteManager *nm_netns_get_route_manager(NMNetns *self);
+
 void nm_netns_set_platform(NMNetns *self, NMPlatform *platform);
 NMPlatform * nm_netns_get_platform(NMNetns *self);
 

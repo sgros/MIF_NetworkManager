@@ -65,6 +65,7 @@
 #include "sd-ipv4ll.h"
 #include "nm-audit-manager.h"
 #include "nm-arping-manager.h"
+#include "nm-netns-controller.h"
 
 #include "nm-device-logging.h"
 _LOG_DECLARE_SELF (NMDevice);
@@ -4298,7 +4299,7 @@ ip4_config_merge_and_apply (NMDevice *self,
 	 */
 
 	connection_has_default_route
-	    = nm_default_route_manager_ip4_connection_has_default_route (nm_default_route_manager_get (),
+	    = nm_default_route_manager_ip4_connection_has_default_route (nm_netns_controller_get_default_route_manager (),
 	                                                                 connection, &connection_is_never_default);
 
 	if (   !priv->v4_commit_first_time
@@ -5021,7 +5022,7 @@ ip6_config_merge_and_apply (NMDevice *self,
 	 */
 
 	connection_has_default_route
-	    = nm_default_route_manager_ip6_connection_has_default_route (nm_default_route_manager_get (),
+	    = nm_default_route_manager_ip6_connection_has_default_route (nm_netns_controller_get_default_route_manager (),
 	                                                                 connection, &connection_is_never_default);
 
 	if (   !priv->v6_commit_first_time
@@ -7925,7 +7926,7 @@ nm_device_set_ip4_config (NMDevice *self,
 		g_clear_object (&priv->dev_ip4_config);
 	}
 
-	nm_default_route_manager_ip4_update_default_route (nm_default_route_manager_get (), self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
 
 	if (has_changes) {
 		_update_ip4_address (self);
@@ -8094,7 +8095,7 @@ nm_device_set_ip6_config (NMDevice *self,
 		       nm_exported_object_get_path (NM_EXPORTED_OBJECT (old_config)));
 	}
 
-	nm_default_route_manager_ip6_update_default_route (nm_default_route_manager_get (), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
 
 	if (has_changes) {
 		if (old_config != priv->ip6_config)
@@ -9773,14 +9774,14 @@ _cleanup_generic_post (NMDevice *self, CleanupType cleanup_type)
 	if (cleanup_type == CLEANUP_TYPE_DECONFIGURE) {
 		priv->default_route.v4_is_assumed = FALSE;
 		priv->default_route.v6_is_assumed = FALSE;
-		nm_default_route_manager_ip4_update_default_route (nm_default_route_manager_get (), self);
-		nm_default_route_manager_ip6_update_default_route (nm_default_route_manager_get (), self);
+		nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+		nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
 	}
 
 	priv->default_route.v4_is_assumed = TRUE;
 	priv->default_route.v6_is_assumed = TRUE;
-	nm_default_route_manager_ip4_update_default_route (nm_default_route_manager_get (), self);
-	nm_default_route_manager_ip6_update_default_route (nm_default_route_manager_get (), self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
 
 	priv->v4_commit_first_time = TRUE;
 	priv->v6_commit_first_time = TRUE;
@@ -9877,7 +9878,7 @@ nm_device_cleanup (NMDevice *self, NMDeviceStateReason reason, CleanupType clean
 	/* Take out any entries in the routing table and any IP address the device had. */
 	ifindex = nm_device_get_ip_ifindex (self);
 	if (ifindex > 0) {
-		nm_route_manager_route_flush (nm_route_manager_get (), ifindex);
+		nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), ifindex);
 		nm_platform_address_flush (NM_PLATFORM_GET, ifindex);
 	}
 

@@ -74,8 +74,6 @@ typedef struct {
 
 G_DEFINE_TYPE (NMRouteManager, nm_route_manager, G_TYPE_OBJECT);
 
-NM_DEFINE_SINGLETON_GETTER (NMRouteManager, nm_route_manager_get, NM_TYPE_ROUTE_MANAGER);
-
 /*********************************************************************************************/
 
 typedef struct {
@@ -131,10 +129,7 @@ static const VTableIP vtable_v4, vtable_v6;
             char __ch = __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'); \
             char __prefix[30] = _NMLOG_PREFIX_NAME; \
             \
-            if ((self) != singleton_instance) \
-                g_snprintf (__prefix, sizeof (__prefix), "%s%c[%p]", _NMLOG_PREFIX_NAME, __ch, (self)); \
-            else \
-                __prefix[STRLEN (_NMLOG_PREFIX_NAME)] = __ch; \
+            g_snprintf (__prefix, sizeof (__prefix), "%s%c[%p]", _NMLOG_PREFIX_NAME, __ch, (self)); \
             _nm_log ((level), (__domain), 0, \
                      "%s: " _NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
                      __prefix _NM_UTILS_MACRO_REST(__VA_ARGS__)); \
@@ -1136,6 +1131,14 @@ static const VTableIP vtable_v6 = {
 	.route_dest_cmp                 = (int (*) (const NMPlatformIPXRoute *, const NMPlatformIPXRoute *)) _v6_route_dest_cmp,
 	.route_id_cmp                   = (int (*) (const NMPlatformIPXRoute *, const NMPlatformIPXRoute *)) _v6_route_id_cmp,
 };
+
+/*********************************************************************************************/
+
+NMRouteManager *
+nm_route_manager_new(void)
+{
+	return g_object_new(NM_TYPE_ROUTE_MANAGER, NULL);
+}
 
 /*********************************************************************************************/
 
