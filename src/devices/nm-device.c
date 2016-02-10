@@ -65,6 +65,7 @@
 #include "sd-ipv4ll.h"
 #include "nm-audit-manager.h"
 #include "nm-arping-manager.h"
+#include "nm-netns.h"
 #include "nm-netns-controller.h"
 
 #include "nm-device-logging.h"
@@ -135,6 +136,7 @@ enum {
 	PROP_REAL,
 	PROP_SLAVES,
 	PROP_PVDS,
+	PROP_NETNS,
 	LAST_PROP
 };
 
@@ -389,6 +391,11 @@ typedef struct _NMDevicePrivate {
          * nm_ip6_config.
          */
 	GHashTable * pvds;
+
+	/*
+	 * Network namespace to which device belongs to.
+	 */
+	NMNetns *netns;
 } NMDevicePrivate;
 
 static gboolean nm_device_set_ip4_config (NMDevice *self,
@@ -10810,7 +10817,31 @@ spec_match_list (NMDevice *self, const GSList *specs)
 	return matched;
 }
 
-/***********************************************************/
+void
+nm_device_set_netns (NMDevice *self, NMNetns *netns)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+
+	if (priv->netns != netns) {
+		if (priv->netns)
+			g_object_unref(priv->netns);
+		priv->netns = netns;
+		g_object_ref(netns);
+		g_object_notify (G_OBJECT (self), NM_DEVICE_NETNS);
+
+		nm_log_dbg (LOGD_NETNS, "Device %s(%d) assigned network namespace %s",
+			    priv->iface, priv->ifindex, nm_netns_get_name(netns));
+
+	}
+}
+
+NMNetns *
+nm_device_get_netns (NMDevice *self)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+
+	return priv->netns;
+}
 
 static const char *
 _activation_func_to_string (ActivationHandleFunc func)
@@ -11331,6 +11362,9 @@ get_property (GObject *object, guint prop_id,
 		g_value_take_boxed (value, pvd_list);
 		break;
 	}
+	case PROP_NETNS:
+		nm_utils_g_value_set_object_path (value, priv->netns);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -11648,6 +11682,13 @@ nm_device_class_init (NMDeviceClass *klass)
 	    (object_class, PROP_PVDS,
 	     g_param_spec_boxed (NM_DEVICE_PVDS, "", "",
 	                         G_TYPE_STRV,
+	                         G_PARAM_READABLE |
+	                         G_PARAM_STATIC_STRINGS));
+
+	g_object_class_install_property
+	    (object_class, PROP_NETNS,
+	     g_param_spec_string (NM_DEVICE_NETNS, "", "",
+	                         NULL,
 	                         G_PARAM_READABLE |
 	                         G_PARAM_STATIC_STRINGS));
 

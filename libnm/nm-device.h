@@ -65,6 +65,7 @@ G_BEGIN_DECLS
 #define NM_DEVICE_METERED "metered"
 #define NM_DEVICE_LLDP_NEIGHBORS "lldp-neighbors"
 #define NM_DEVICE_PVDS "provisioning-domains"
+#define NM_DEVICE_NETNS "network-namespace"
 
 struct _NMDevice {
 	NMObject parent;

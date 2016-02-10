@@ -34,6 +34,8 @@
 #include "nm-device.h"
 #include "nm-device-generic.h"
 #include "nm-platform.h"
+#include "nm-netns.h"
+#include "nm-netns-controller.h"
 #include "nm-rfkill-manager.h"
 #include "nm-dhcp-manager.h"
 #include "nm-settings.h"
@@ -1058,7 +1060,7 @@ system_create_virtual_device (NMManager *self, NMConnection *connection)
 			return NULL;
 		}
 
-		device = nm_device_factory_create_device (factory, iface, NULL, connection, NULL, &error);
+		device = nm_device_factory_create_device (factory, iface, NULL, connection, nm_netns_controller_get_root_netns(), NULL, &error);
 		if (!device) {
 			nm_log_warn (LOGD_DEVICE, "(%s) factory can't create the device: %s",
 			             nm_connection_get_id (connection), error->message);
@@ -2027,7 +2029,7 @@ platform_link_added (NMManager *self,
 	if (factory) {
 		gboolean ignore = FALSE;
 
-		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, &ignore, &error);
+		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, nm_netns_controller_get_root_netns(), &ignore, &error);
 		if (!device) {
 			if (!ignore) {
 				nm_log_warn (LOGD_HW, "%s: factory failed to create device: %s",
@@ -2051,6 +2053,7 @@ platform_link_added (NMManager *self,
 			/* fall through */
 		default:
 			device = nm_device_generic_new (plink);
+			nm_device_set_netns(device, nm_netns_controller_get_root_netns());
 			break;
 		}
 	}

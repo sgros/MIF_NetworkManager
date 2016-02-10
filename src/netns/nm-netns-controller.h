@@ -52,7 +52,7 @@ typedef struct {
 
 GType nm_netns_controller_get_type (void);
 
-void nm_netns_controller_setup (void);
+gboolean nm_netns_controller_setup (void);
 
 NMNetnsController * nm_netns_controller_get (void);
 
@@ -60,6 +60,9 @@ void nm_netns_controller_stop (NMNetnsController *self);
 
 void nm_netns_controller_activate_root_netns(NMNetnsController *self);
 void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns);
+
+NMNetns * nm_netns_controller_get_active_netns(void);
+NMNetns * nm_netns_controller_get_root_netns(void);
 
 NMPlatform * nm_netns_controller_get_active_platform(NMNetnsController *self);
 NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);

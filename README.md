@@ -15,6 +15,32 @@ In order to test this code you'll need:
 
 3. This version of NetworkManager.
 
+## Test cases
+
+# Test case 1
+
+Objective: Determine if NetworkManager, properly manages root namespace when started
+
+Steps:
+
+1. Start NetworkManager
+
+Expected state:
+
+1. In /var/run/netns there should be "rootns" file
+
+# Test case 2
+
+Objective: Determine if NetworkManager, properly manages root namespace when stopped
+
+Steps:
+
+1. Stop NetworkManager using Ctrl+C
+
+Expected state:
+
+1. In /var/run/netns there shouldn't be "rootns" file anymore
+
 ## TODO
 
 The following items are on a todo list (in a random order):

@@ -28,7 +28,7 @@
 
 #include "nm-device-factory.h"
 #include "nm-default.h"
-#include "nm-platform.h"
+#include "nm-netns.h"
 #include "nm-utils.h"
 
 const NMLinkType _nm_device_factory_no_default_links[] = { NM_LINK_TYPE_NONE };
@@ -86,10 +86,12 @@ nm_device_factory_create_device (NMDeviceFactory *factory,
                                  const char *iface,
                                  const NMPlatformLink *plink,
                                  NMConnection *connection,
+                                 NMNetns *netns,
                                  gboolean *out_ignore,
                                  GError **error)
 {
 	NMDeviceFactoryInterface *interface;
+	NMDevice *device;
 	const NMLinkType *link_types = NULL;
 	const char **setting_types = NULL;
 	int i;
@@ -98,6 +100,8 @@ nm_device_factory_create_device (NMDeviceFactory *factory,
 	g_return_val_if_fail (iface && *iface, NULL);
 	g_return_val_if_fail (plink || connection, NULL);
 	g_return_val_if_fail (!plink || !connection, NULL);
+
+	g_assert(netns);
 
 	nm_device_factory_get_supported_types (factory, &link_types, &setting_types);
 
@@ -139,7 +143,11 @@ nm_device_factory_create_device (NMDeviceFactory *factory,
 		return NULL;
 	}
 
-	return interface->create_device (factory, iface, plink, connection, out_ignore);
+	device = interface->create_device (factory, iface, plink, connection, out_ignore);
+
+	nm_device_set_netns(device, netns);
+
+	return device;
 }
 
 const char *

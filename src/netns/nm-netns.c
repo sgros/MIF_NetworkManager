@@ -369,7 +369,7 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 #endif
 
 	dbus_path = nm_exported_object_export (NM_EXPORTED_OBJECT (device));
-	nm_log_info (LOGD_NETNS, "(%s): new %s device (%s)", iface, type_desc, dbus_path);
+	nm_log_info (LOGD_NETNS, "netns (%s): new %s device (%s)", iface, type_desc, dbus_path);
 
 	nm_device_finish_init (device);
 
@@ -400,6 +400,7 @@ platform_link_added (NMNetns *self,
 		     int ifindex,
 		     const NMPlatformLink *plink)
 {
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	NMDeviceFactory *factory;
 	NMDevice *device = NULL;
 	GError *error = NULL;
@@ -442,7 +443,9 @@ platform_link_added (NMNetns *self,
 	if (factory) {
 		gboolean ignore = FALSE;
 
-		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, &ignore, &error);
+		nm_log_dbg (LOGD_NETNS, "Creating new device %s in network namespace %s",
+			     plink->name, priv->name);
+		device = nm_device_factory_create_device (factory, plink->name, plink, NULL, self, &ignore, &error);
 		if (!device) {
 			if (!ignore) {
 				nm_log_warn (LOGD_NETNS, "%s: factory failed to create device: %s",
@@ -465,7 +468,10 @@ platform_link_added (NMNetns *self,
 			nm_plugin_missing = TRUE;
 			/* fall through */
 		default:
+			nm_log_dbg (LOGD_NETNS, "Creating new generic device %s in network namespace %s",
+				    plink->name, priv->name);
 			device = nm_device_generic_new (plink);
+			nm_device_set_netns(device, self);
 			break;
 		}
 	}

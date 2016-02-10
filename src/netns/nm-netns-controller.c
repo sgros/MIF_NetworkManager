@@ -78,6 +78,9 @@ void nm_netns_controller_activate_root_netns(NMNetnsController *self)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
+       	nm_log_dbg (LOGD_NETNS, "Activating root network namespace %s (net_id=%d)",
+		    nm_netns_get_name(priv->root_ns), nm_netns_get_id(priv->root_ns));
+
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
 
 	if (priv->active_ns)
@@ -91,6 +94,9 @@ void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
+       	nm_log_dbg (LOGD_NETNS, "Activating network namespace %s (net_id=%d)",
+		    nm_netns_get_name(priv->active_ns), nm_netns_get_id(priv->root_ns));
+
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
 	g_object_unref(priv->root_ns);
 	priv->active_ns = netns;
@@ -98,6 +104,22 @@ void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns)
 }
 
 /******************************************************************/
+
+NMNetns *
+nm_netns_controller_get_root_netns(void)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	return priv->root_ns;
+}
+
+NMNetns *
+nm_netns_controller_get_active_netns(void)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	return priv->active_ns;
+}
 
 NMPlatform *
 nm_netns_controller_get_active_platform(NMNetnsController *self)
@@ -147,10 +169,11 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 
 	/*
          * When creating new namespace it isn't important which platform
-         * module we are using, so use main one.
+         * module we are using, so use the main one.
          */
 	if ((netns_id = nm_platform_netns_create(NM_PLATFORM_GET, netnsname, isroot)) == -1) {
-        	nm_log_err (LOGD_NETNS, "error creating namespace %s ", netnsname);
+        	nm_log_err (LOGD_NETNS, "error creating namespace %s (root=%s)",
+			    netnsname, isroot ? "yes" : "no");
 		g_object_unref(netns);
 		return FALSE;
 	}
@@ -214,9 +237,13 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
 			GDBusMethodInvocation *context,
 			const char *netnsname)
 {
-	create_new_namespace(self, netnsname, FALSE);
-
-	g_dbus_method_invocation_return_value (context, NULL);
+	if (create_new_namespace(self, netnsname, FALSE))
+		g_dbus_method_invocation_return_value (context, NULL);
+	else
+		g_dbus_method_invocation_return_error (context,
+						       NM_NETNS_ERROR,
+						       NM_NETNS_ERROR_FAILED,
+						       "Error creating network namespace");
 }
 
 /**
@@ -230,10 +257,10 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
  * NetworkManager will typically use only one network manager controller
  * object during its run.
  */
-void
+gboolean
 nm_netns_controller_setup (void)
 {
-        g_return_if_fail (!singleton_instance);
+        g_return_val_if_fail (!singleton_instance, FALSE);
 
         singleton_instance = nm_netns_controller_new();
 
@@ -243,8 +270,7 @@ nm_netns_controller_setup (void)
 			"NMNetnsController", singleton_instance,
 			G_OBJECT_TYPE_NAME (singleton_instance));
 
-	/* TODO/BUG: What about error handling? */
-	create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE);
+	return create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE);
 }
 
 NMNetnsController *

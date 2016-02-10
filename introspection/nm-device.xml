@@ -173,6 +173,11 @@
         List of provisioning domains received through the interface.
       </tp:docstring>
     </property>
+    <property name="NetworkNamespace" type="s" access="read">
+      <tp:docstring>
+        Network namespace in which device lives.
+      </tp:docstring>
+    </property>
 
     <method name="Reapply">
       <arg name="connection" type="a{sa{sv}}" direction="in">

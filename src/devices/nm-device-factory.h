@@ -121,6 +121,7 @@ typedef struct {
 	 * @iface: the interface name of the device
 	 * @plink: the #NMPlatformLink if backed by a kernel device
 	 * @connection: the #NMConnection if not backed by a kernel device
+	 * @netns: the #NMNetns to which device belongs to (and access to platform object)
 	 * @out_ignore: on return, %TRUE if the link should be ignored
 	 *
 	 * The plugin should create a new unrealized device using the details given
@@ -186,6 +187,7 @@ NMDevice * nm_device_factory_create_device (NMDeviceFactory *factory,
                                             const char *iface,
                                             const NMPlatformLink *plink,
                                             NMConnection *connection,
+                                            NMNetns *netns,
                                             gboolean *out_ignore,
                                             GError **error);
 

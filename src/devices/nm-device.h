@@ -59,7 +59,7 @@
 #define NM_DEVICE_MTU              "mtu"
 #define NM_DEVICE_HW_ADDRESS       "hw-address"
 #define NM_DEVICE_METERED          "metered"
-#define NM_DEVICE_LLDP_NEIGHBORS  "lldp-neighbors"
+#define NM_DEVICE_LLDP_NEIGHBORS   "lldp-neighbors"
 #define NM_DEVICE_REAL             "real"
 
 /* the "slaves" property is internal in the parent class, but exposed
@@ -68,6 +68,8 @@
 #define NM_DEVICE_SLAVES           "slaves"         /* partially internal */
 
 #define NM_DEVICE_PVDS             "provisioning-domains"
+
+#define NM_DEVICE_NETNS            "network-namespace"
 
 #define NM_DEVICE_TYPE_DESC        "type-desc"      /* Internal only */
 #define NM_DEVICE_RFKILL_TYPE      "rfkill-type"    /* Internal only */
@@ -542,6 +544,9 @@ void nm_device_reactivate_ip6_config (NMDevice *device,
 
 void nm_device_update_hw_address (NMDevice *self);
 void nm_device_update_initial_hw_address (NMDevice *self);
+
+void nm_device_set_netns (NMDevice *self, NMNetns *netns);
+NMNetns * nm_device_get_netns (NMDevice *self);
 
 G_END_DECLS
 
