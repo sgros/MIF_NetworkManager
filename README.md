@@ -1,4 +1,4 @@
-# PvD and network namespace aware NetworkManager
+# PvD and network namespace aware NetworkManager #
 
 **WARNING: This is a very alpha quality code! Use on your own risk!**
 
@@ -15,9 +15,9 @@ In order to test this code you'll need:
 
 3. This version of NetworkManager.
 
-## Test cases
+## Test cases ##
 
-# Test case 1
+### Test case 1 ###
 
 Objective: Determine if NetworkManager, properly manages root namespace when started
 
@@ -29,7 +29,7 @@ Expected state:
 
 1. In /var/run/netns there should be "rootns" file
 
-# Test case 2
+### Test case 2 ###
 
 Objective: Determine if NetworkManager, properly manages root namespace when stopped
 
@@ -41,7 +41,37 @@ Expected state:
 
 1. In /var/run/netns there shouldn't be "rootns" file anymore
 
-## TODO
+### Test case 3 ###
+
+Objective: Determine if NetworkManager properly creates a new network namespace
+
+Steps:
+
+1. Start NetworkManager
+
+2. Invoke method over dbus to create a new network namespace:
+
+```
+dbus-send --system \
+	--print-reply \
+	--dest=org.freedesktop.NetworkManager \
+	/org/freedesktop/NetworkManager/NetworkNamespacesController \
+	org.freedesktop.NetworkManager.NetworkNamespacesController.AddNetworkNamespace \
+	string:"testns"
+```
+
+Expected state:
+
+1. In /var/run/netns there should be "testns" file
+
+2. Enter the network namespace and check that loopback interace is present and active:
+
+```
+ip netns exec testns bash
+ip addr sh
+```
+
+## TODO ##
 
 The following items are on a todo list (in a random order):
 
