@@ -505,6 +505,8 @@ libnm_iface_helper_la_SOURCES = \
 	\
 	netns/nm-netns-controller-dummy.c \
 	netns/nm-netns-controller-dummy.h \
+	netns/nm-netns-dummy.c \
+	netns/nm-netns-dummy.h \
 	\
 	platform/nm-linux-platform.c \
 	platform/nm-linux-platform.h \

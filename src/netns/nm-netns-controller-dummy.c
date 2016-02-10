@@ -45,6 +45,7 @@
 
 #include "nm-platform.h"
 #include "nm-linux-platform.h"
+#include "nm-netns-dummy.h"
 #include "nm-netns-controller-dummy.h"
 #include "NetworkManagerUtils.h"
 
@@ -60,9 +61,9 @@ typedef struct {
 	gboolean register_singleton;
 
 	/*
-	 * Route manager instance for the namespace
+	 * Only one fixed network namespace
 	 */
-	NMRouteManager *route_manager;
+	NMNetns *netns;
 
 } NMNetnsControllerPrivate;
 
@@ -72,14 +73,20 @@ NM_DEFINE_SINGLETON_INSTANCE (NMNetnsController);
 
 NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
 
-#define NETNS_ROOT_NAME			"rootns"
-
 NMRouteManager *
 nm_netns_controller_get_route_manager(void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
-	return priv->route_manager;
+	return nm_netns_get_route_manager(priv->netns);
+}
+
+NMNetns *
+nm_netns_controller_get_active_netns(void)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+
+	return priv->netns;
 }
 
 /******************************************************************/
@@ -108,7 +115,7 @@ nm_netns_controller_setup (void)
 
 	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
-	priv->route_manager = nm_route_manager_new();
+	priv->netns = nm_netns_new();
 
         nm_log_dbg (LOGD_NETNS, "setup %s singleton (%p, %s)",
 			"NMNetnsController", singleton_instance,
@@ -126,7 +133,8 @@ nm_netns_controller_stop (NMNetnsController *self)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
-	g_object_unref(priv->route_manager);
+	nm_netns_stop(priv->netns);
+	g_clear_object(&priv->netns);
 }
 
 NMNetnsController *
