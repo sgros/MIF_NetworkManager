@@ -155,7 +155,7 @@ nm_netns_controller_get_route_manager(void)
 
 /******************************************************************/
 
-static gboolean
+static NMNetns *
 create_new_namespace(NMNetnsController *self, const char *netnsname,
 		gboolean isroot)
 {
@@ -175,7 +175,7 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
         	nm_log_err (LOGD_NETNS, "error creating namespace %s (root=%s)",
 			    netnsname, isroot ? "yes" : "no");
 		g_object_unref(netns);
-		return FALSE;
+		return NULL;
 	}
 
 	nm_netns_set_id(netns, netns_id);
@@ -200,14 +200,14 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 		if (!nm_netns_setup(netns)) {
 	        	nm_log_dbg (LOGD_NETNS, "error setting up namespace %s ", netnsname);
 			g_object_unref(netns);
-			return FALSE;
+			return NULL;
 		}
 	}
 
 	path = nm_netns_export(netns);
 	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
 
-	return TRUE;
+	return netns;
 }
 
 /******************************************************************/
@@ -237,9 +237,14 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
 			GDBusMethodInvocation *context,
 			const char *netnsname)
 {
-	if (create_new_namespace(self, netnsname, FALSE))
+	NMNetns *netns;
+
+	if ((netns = create_new_namespace(self, netnsname, FALSE)) != NULL) {
 		g_dbus_method_invocation_return_value (context, NULL);
-	else
+		g_dbus_method_invocation_return_value (context,
+						       g_variant_new ("(o)",
+						       nm_exported_object_get_path (NM_EXPORTED_OBJECT (netns))));
+	} else
 		g_dbus_method_invocation_return_error (context,
 						       NM_NETNS_ERROR,
 						       NM_NETNS_ERROR_FAILED,
@@ -270,7 +275,7 @@ nm_netns_controller_setup (void)
 			"NMNetnsController", singleton_instance,
 			G_OBJECT_TYPE_NAME (singleton_instance));
 
-	return create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE);
+	return create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE) ? TRUE : FALSE;
 }
 
 NMNetnsController *

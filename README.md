@@ -62,9 +62,16 @@ dbus-send --system \
 
 Expected state:
 
-1. In /var/run/netns there should be "testns" file
+1. The expected response from method invocation should be like follows:
 
-2. Enter the network namespace and check that loopback interace is present and active:
+```
+method return time=1455099674.081185 sender=:1.1046 -> destination=:1.1050 serial=2763 reply_serial=2
+   object path "/org/freedesktop/NetworkManager/NetworkNamespace/1"
+```
+
+2. In /var/run/netns there should be "testns" file
+
+3. Enter the network namespace and check that loopback interace is present and active:
 
 ```
 ip netns exec testns bash

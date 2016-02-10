@@ -27,8 +27,12 @@
           Name of the new network namespace.
         </tp:docstring>
       </arg>
+      <arg name="network_namespace" type="o" direction="out">
+        <tp:docstring>
+          The path of the network namepsace object created.
+        </tp:docstring>
+      </arg>
     </method>
-
 
   </interface>
 </node>
