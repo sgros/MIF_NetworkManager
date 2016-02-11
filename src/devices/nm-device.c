@@ -10942,7 +10942,6 @@ nm_device_init (NMDevice *self)
 	NMDevicePrivate *priv;
 
 	priv = G_TYPE_INSTANCE_GET_PRIVATE (self, NM_TYPE_DEVICE, NMDevicePrivate);
-printf("\n\ninit %p\n\n", priv->netns);
 
 	self->priv = priv;
 
@@ -10981,21 +10980,8 @@ constructor (GType type,
 
 	self = NM_DEVICE (object);
 	priv = NM_DEVICE_GET_PRIVATE (self);
-printf("\n\nconstructor %p\n\n", priv->netns);
 
 	return object;
-}
-
-static void
-constructed (GObject *object)
-{
-	NMDevice *self = NM_DEVICE (object);
-	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
-printf("\n\nconstructed %p\n\n", priv->netns);
-
-	G_OBJECT_CLASS (nm_device_parent_class)->constructed (object);
-
-	_LOGD (LOGD_DEVICE, "constructed (%s)", G_OBJECT_TYPE_NAME (self));
 }
 
 static void
@@ -11004,7 +10990,6 @@ dispose (GObject *object)
 	NMDevice *self = NM_DEVICE (object);
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 	NMPlatform *platform;
-printf("\n\ndispose %p\n\n", priv->netns);
 
 	_LOGD (LOGD_DEVICE, "disposing");
 
@@ -11078,7 +11063,6 @@ finalize (GObject *object)
 {
 	NMDevice *self = NM_DEVICE (object);
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
-printf("\n\nfinalize %p\n\n", priv->netns);
 
 	_LOGD (LOGD_DEVICE, "finalize(): %s", G_OBJECT_TYPE_NAME (self));
 
@@ -11113,7 +11097,6 @@ set_property (GObject *object, guint prop_id,
 	const char *hw_addr, *p;
 	guint count;
 	gboolean val_bool;
-printf("\n\nset_property 1 %p\n\n", priv->netns);
 
 	switch (prop_id) {
 	case PROP_UDI:
@@ -11214,7 +11197,6 @@ printf("\n\nset_property 1 %p\n\n", priv->netns);
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
 	}
-printf("\n\nset_property 2 %p\n\n", priv->netns);
 }
 
 static void
@@ -11227,7 +11209,6 @@ get_property (GObject *object, guint prop_id,
 	GHashTableIter iter;
 	NMConnection *connection;
 	GVariantBuilder array_builder;
-printf("\n\nget_property 1 %p\n\n", priv->netns);
 
 	switch (prop_id) {
 	case PROP_UDI:
@@ -11401,7 +11382,6 @@ printf("\n\nget_property 1 %p\n\n", priv->netns);
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
 	}
-printf("\n\nget_property 2 %p\n\n", priv->netns);
 }
 
 static void
@@ -11409,7 +11389,6 @@ nm_device_class_init (NMDeviceClass *klass)
 {
 	GObjectClass *object_class = G_OBJECT_CLASS (klass);
 	NMExportedObjectClass *exported_object_class = NM_EXPORTED_OBJECT_CLASS (klass);
-printf("\n\nclass_init\n\n");
 
 	g_type_class_add_private (object_class, sizeof (NMDevicePrivate));
 
@@ -11421,7 +11400,6 @@ printf("\n\nclass_init\n\n");
 	object_class->set_property = set_property;
 	object_class->get_property = get_property;
 	object_class->constructor = constructor;
-	object_class->constructed = constructed;
 
 	klass->link_changed = link_changed;
 
