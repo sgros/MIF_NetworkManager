@@ -145,7 +145,7 @@ nm_device_factory_create_device (NMDeviceFactory *factory,
 
 	device = interface->create_device (factory, iface, plink, connection, out_ignore);
 
-	nm_device_set_netns(device, netns);
+	nm_device_connect_to_netns(device, netns);
 
 	return device;
 }

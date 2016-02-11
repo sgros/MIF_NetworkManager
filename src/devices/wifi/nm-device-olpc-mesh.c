@@ -192,8 +192,8 @@ _mesh_set_channel (NMDeviceOlpcMesh *self, guint32 channel)
 {
 	int ifindex = nm_device_get_ifindex (NM_DEVICE (self));
 
-	if (nm_platform_mesh_get_channel (NM_PLATFORM_GET, ifindex) != channel) {
-		if (nm_platform_mesh_set_channel (NM_PLATFORM_GET, ifindex, channel))
+	if (nm_platform_mesh_get_channel (nm_device_get_platform (NM_DEVICE (self)), ifindex) != channel) {
+		if (nm_platform_mesh_set_channel (nm_device_get_platform (NM_DEVICE (self)), ifindex, channel))
 			g_object_notify (G_OBJECT (self), NM_DEVICE_OLPC_MESH_ACTIVE_CHANNEL);
 	}
 }
@@ -219,7 +219,7 @@ act_stage2_config (NMDevice *device, NMDeviceStateReason *reason)
 		_mesh_set_channel (self, channel);
 
 	ssid = nm_setting_olpc_mesh_get_ssid (s_mesh);
-	nm_platform_mesh_set_ssid (NM_PLATFORM_GET,
+	nm_platform_mesh_set_ssid (nm_device_get_platform (device),
 	                           nm_device_get_ifindex (device),
 	                           g_bytes_get_data (ssid, NULL),
 	                           g_bytes_get_size (ssid));
@@ -460,7 +460,7 @@ get_property (GObject *object, guint prop_id,
 		nm_utils_g_value_set_object_path (value, priv->companion);
 		break;
 	case PROP_ACTIVE_CHANNEL:
-		g_value_set_uint (value, nm_platform_mesh_get_channel (NM_PLATFORM_GET, nm_device_get_ifindex (NM_DEVICE (device))));
+		g_value_set_uint (value, nm_platform_mesh_get_channel (nm_device_get_platform (NM_DEVICE (device)), nm_device_get_ifindex (NM_DEVICE (device))));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);

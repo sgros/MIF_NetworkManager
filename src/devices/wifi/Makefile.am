@@ -12,6 +12,7 @@ AM_CPPFLAGS = \
 	-I${top_srcdir}/src/devices \
 	-I${top_srcdir}/src/settings \
 	-I${top_srcdir}/src/platform \
+	-I${top_srcdir}/src/netns \
 	-I${top_srcdir}/src/supplicant-manager \
 	-I${top_builddir}/introspection \
 	-I${top_srcdir}/shared \

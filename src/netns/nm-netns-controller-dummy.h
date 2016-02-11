@@ -60,7 +60,7 @@ void nm_netns_controller_stop (NMNetnsController *self);
 
 NMRouteManager *nm_netns_controller_get_route_manager(void);
 NMNetns *nm_netns_controller_get_active_netns(void);
-
+NMNetns *nm_netns_controller_get_root_netns(void);
 
 NMNetnsController *nm_netns_controller_new(void);
 

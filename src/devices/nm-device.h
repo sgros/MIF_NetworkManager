@@ -28,6 +28,8 @@
 #include "nm-dbus-interface.h"
 #include "nm-default.h"
 #include "nm-connection.h"
+#include "nm-netns.h"
+#include "nm-platform.h"
 #include "nm-rfkill-manager.h"
 #include "NetworkManagerUtils.h"
 
@@ -332,6 +334,8 @@ GType nm_device_get_type (void);
 
 void            nm_device_finish_init   (NMDevice *device);
 
+void            nm_device_connect_to_netns (NMDevice *self, NMNetns *netns);
+
 const char *	nm_device_get_udi		(NMDevice *dev);
 const char *	nm_device_get_iface		(NMDevice *dev);
 int             nm_device_get_ifindex	(NMDevice *dev);
@@ -547,6 +551,8 @@ void nm_device_update_initial_hw_address (NMDevice *self);
 
 void nm_device_set_netns (NMDevice *self, NMNetns *netns);
 NMNetns * nm_device_get_netns (NMDevice *self);
+
+NMPlatform * nm_device_get_platform(NMDevice *self);
 
 G_END_DECLS
 

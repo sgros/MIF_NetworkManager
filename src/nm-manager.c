@@ -2052,8 +2052,7 @@ platform_link_added (NMManager *self,
 			nm_plugin_missing = TRUE;
 			/* fall through */
 		default:
-			device = nm_device_generic_new (plink);
-			nm_device_set_netns(device, nm_netns_controller_get_root_netns());
+			device = nm_device_generic_new (plink, nm_netns_controller_get_root_netns());
 			break;
 		}
 	}

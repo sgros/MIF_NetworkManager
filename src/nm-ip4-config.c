@@ -187,7 +187,7 @@ routes_are_duplicate (const NMPlatformIP4Route *a, const NMPlatformIP4Route *b, 
 }
 
 NMIP4Config *
-nm_ip4_config_capture (int ifindex, gboolean capture_resolv_conf)
+nm_ip4_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf)
 {
 	NMIP4Config *config;
 	NMIP4ConfigPrivate *priv;
@@ -197,7 +197,7 @@ nm_ip4_config_capture (int ifindex, gboolean capture_resolv_conf)
 	gboolean old_has_gateway = FALSE;
 
 	/* Slaves have no IP configuration */
-	if (nm_platform_link_get_master (NM_PLATFORM_GET, ifindex) > 0)
+	if (nm_platform_link_get_master (nm_netns_get_platform(netns), ifindex) > 0)
 		return NULL;
 
 	config = nm_ip4_config_new (ifindex);
@@ -206,8 +206,8 @@ nm_ip4_config_capture (int ifindex, gboolean capture_resolv_conf)
 	g_array_unref (priv->addresses);
 	g_array_unref (priv->routes);
 
-	priv->addresses = nm_platform_ip4_address_get_all (NM_PLATFORM_GET, ifindex);
-	priv->routes = nm_platform_ip4_route_get_all (NM_PLATFORM_GET, ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
+	priv->addresses = nm_platform_ip4_address_get_all (nm_netns_get_platform(netns), ifindex);
+	priv->routes = nm_platform_ip4_route_get_all (nm_netns_get_platform(netns), ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
 
 	/* Extract gateway from default route */
 	old_gateway = priv->gateway;
@@ -269,7 +269,7 @@ nm_ip4_config_capture (int ifindex, gboolean capture_resolv_conf)
 }
 
 gboolean
-nm_ip4_config_commit (const NMIP4Config *config, int ifindex, gboolean routes_full_sync, gint64 default_route_metric)
+nm_ip4_config_commit (const NMIP4Config *config, NMNetns *netns, int ifindex, gboolean routes_full_sync, gint64 default_route_metric)
 {
 	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
 	int i;
@@ -279,7 +279,7 @@ nm_ip4_config_commit (const NMIP4Config *config, int ifindex, gboolean routes_fu
 	g_return_val_if_fail (config != NULL, FALSE);
 
 	/* Addresses */
-	nm_platform_ip4_address_sync (NM_PLATFORM_GET, ifindex, priv->addresses,
+	nm_platform_ip4_address_sync (nm_netns_get_platform(netns), ifindex, priv->addresses,
 	                              default_route_metric >= 0 ? &added_addresses : NULL);
 
 	/* Routes */

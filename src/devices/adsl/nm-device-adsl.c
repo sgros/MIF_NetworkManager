@@ -267,14 +267,14 @@ pppoe_vcc_config (NMDeviceAdsl *self)
 		return FALSE;
 
 	/* Watch for the 'nas' interface going away */
-	g_signal_connect (NM_PLATFORM_GET, NM_PLATFORM_SIGNAL_LINK_CHANGED,
+	g_signal_connect (nm_device_get_platform (NM_DEVICE (self)), NM_PLATFORM_SIGNAL_LINK_CHANGED,
 	                  G_CALLBACK (link_changed_cb),
 	                  self);
 
 	_LOGD (LOGD_ADSL, "ATM setup successful");
 
 	/* otherwise we're good for stage3 */
-	nm_platform_link_set_up (NM_PLATFORM_GET, priv->nas_ifindex, NULL);
+	nm_platform_link_set_up (nm_device_get_platform (NM_DEVICE (self)), priv->nas_ifindex, NULL);
 
 	return TRUE;
 }
@@ -300,7 +300,7 @@ nas_update_cb (gpointer user_data)
 	}
 
 	g_warn_if_fail (priv->nas_ifindex < 0);
-	priv->nas_ifindex = nm_platform_link_get_ifindex (NM_PLATFORM_GET, priv->nas_ifname);
+	priv->nas_ifindex = nm_platform_link_get_ifindex (nm_device_get_platform (NM_DEVICE (self)), priv->nas_ifname);
 	if (priv->nas_ifindex < 0) {
 		/* Keep waiting for it to appear */
 		return G_SOURCE_CONTINUE;
@@ -508,7 +508,7 @@ adsl_cleanup (NMDeviceAdsl *self)
 		nm_exported_object_clear_and_unexport (&priv->ppp_manager);
 	}
 
-	g_signal_handlers_disconnect_by_func (NM_PLATFORM_GET, G_CALLBACK (link_changed_cb), self);
+	g_signal_handlers_disconnect_by_func (nm_device_get_platform (NM_DEVICE (self)), G_CALLBACK (link_changed_cb), self);
 
 	if (priv->brfd >= 0) {
 		close (priv->brfd);
@@ -542,7 +542,7 @@ carrier_update_cb (gpointer user_data)
 
 	path  = g_strdup_printf ("/sys/class/atm/%s/carrier",
 	                         ASSERT_VALID_PATH_COMPONENT (nm_device_get_iface (NM_DEVICE (self))));
-	carrier = (int) nm_platform_sysctl_get_int_checked (NM_PLATFORM_GET, path, 10, 0, 1, -1);
+	carrier = (int) nm_platform_sysctl_get_int_checked (nm_device_get_platform (NM_DEVICE (self)), path, 10, 0, 1, -1);
 	g_free (path);
 
 	if (carrier != -1)

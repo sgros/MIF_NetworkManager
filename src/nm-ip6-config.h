@@ -27,6 +27,7 @@
 
 #include "nm-exported-object.h"
 #include "nm-setting-ip6-config.h"
+#include "nm-netns.h"
 
 #define NM_TYPE_IP6_CONFIG (nm_ip6_config_get_type ())
 #define NM_IP6_CONFIG(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_IP6_CONFIG, NMIP6Config))
@@ -76,8 +77,8 @@ NMIP6Config * nm_ip6_config_new_cloned (const NMIP6Config *src);
 int nm_ip6_config_get_ifindex (const NMIP6Config *config);
 
 /* Integration with nm-platform and nm-setting */
-NMIP6Config *nm_ip6_config_capture (int ifindex, gboolean capture_resolv_conf, NMSettingIP6ConfigPrivacy use_temporary);
-gboolean nm_ip6_config_commit (const NMIP6Config *config, int ifindex, gboolean routes_full_sync);
+NMIP6Config *nm_ip6_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf, NMSettingIP6ConfigPrivacy use_temporary);
+gboolean nm_ip6_config_commit (const NMIP6Config *config, NMNetns *netns, int ifindex, gboolean routes_full_sync);
 void nm_ip6_config_merge_setting (NMIP6Config *config, NMSettingIPConfig *setting, guint32 default_route_metric);
 NMSetting *nm_ip6_config_create_setting (const NMIP6Config *config);
 

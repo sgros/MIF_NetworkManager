@@ -107,7 +107,7 @@ act_stage1_prepare (NMDevice *dev, NMDeviceStateReason *reason)
 
 	/* With some drivers the interface must be down to set transport mode */
 	nm_device_take_down (dev, TRUE);
-	ok = nm_platform_sysctl_set (NM_PLATFORM_GET, mode_path, transport_mode);
+	ok = nm_platform_sysctl_set (nm_device_get_platform(dev), mode_path, transport_mode);
 	g_free (mode_path);
 	nm_device_bring_up (dev, TRUE, &no_firmware);
 
@@ -229,7 +229,7 @@ update_connection (NMDevice *device, NMConnection *connection)
 
 	ifindex = nm_device_get_ifindex (device);
 	if (ifindex > 0) {
-		if (!nm_platform_link_infiniband_get_properties (NM_PLATFORM_GET, ifindex, NULL, NULL, &transport_mode))
+		if (!nm_platform_link_infiniband_get_properties (nm_device_get_platform(device), ifindex, NULL, NULL, &transport_mode))
 			transport_mode = "datagram";
 	}
 	g_object_set (G_OBJECT (s_infiniband), NM_SETTING_INFINIBAND_TRANSPORT_MODE, transport_mode, NULL);
@@ -271,7 +271,7 @@ create_and_realize (NMDevice *device,
 		return FALSE;
 	}
 
-	plerr = nm_platform_link_infiniband_add (NM_PLATFORM_GET, parent_ifindex, p_key, out_plink);
+	plerr = nm_platform_link_infiniband_add (nm_device_get_platform(device), parent_ifindex, p_key, out_plink);
 	if (plerr != NM_PLATFORM_ERROR_SUCCESS) {
 		g_set_error (error, NM_DEVICE_ERROR, NM_DEVICE_ERROR_CREATION_FAILED,
 		             "Failed to create InfiniBand P_Key interface '%s' for '%s': %s",

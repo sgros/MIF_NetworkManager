@@ -1047,7 +1047,9 @@ nm_vpn_connection_apply_config (NMVpnConnection *self)
 		nm_platform_link_set_up (NM_PLATFORM_GET, priv->ip_ifindex, NULL);
 
 		if (priv->ip4_config) {
-			if (!nm_ip4_config_commit (priv->ip4_config, priv->ip_ifindex,
+			if (!nm_ip4_config_commit (priv->ip4_config,
+			                           nm_netns_controller_get_root_netns(),
+			                           priv->ip_ifindex,
 			                           TRUE,
 			                           nm_vpn_connection_get_ip4_route_metric (self)))
 				return FALSE;
@@ -1055,6 +1057,7 @@ nm_vpn_connection_apply_config (NMVpnConnection *self)
 
 		if (priv->ip6_config) {
 			if (!nm_ip6_config_commit (priv->ip6_config,
+			                           nm_netns_controller_get_root_netns(),
 			                           priv->ip_ifindex,
 			                           TRUE))
 				return FALSE;

@@ -199,9 +199,9 @@ commit_option (NMDevice *device, NMSetting *setting, const Option *option, gbool
 
 	value = g_strdup_printf ("%u", uval);
 	if (slave)
-		nm_platform_sysctl_slave_set_option (NM_PLATFORM_GET, ifindex, option->sysname, value);
+		nm_platform_sysctl_slave_set_option (nm_device_get_platform(device), ifindex, option->sysname, value);
 	else
-		nm_platform_sysctl_master_set_option (NM_PLATFORM_GET, ifindex, option->sysname, value);
+		nm_platform_sysctl_master_set_option (nm_device_get_platform(device), ifindex, option->sysname, value);
 }
 
 static void
@@ -245,7 +245,7 @@ update_connection (NMDevice *device, NMConnection *connection)
 	}
 
 	for (option = master_options; option->name; option++) {
-		gs_free char *str = nm_platform_sysctl_master_get_option (NM_PLATFORM_GET, ifindex, option->sysname);
+		gs_free char *str = nm_platform_sysctl_master_get_option (nm_device_get_platform(device), ifindex, option->sysname);
 		int value;
 
 		if (str) {
@@ -284,7 +284,7 @@ master_update_slave_connection (NMDevice *device,
 	}
 
 	for (option = slave_options; option->name; option++) {
-		gs_free char *str = nm_platform_sysctl_slave_get_option (NM_PLATFORM_GET, ifindex_slave, option->sysname);
+		gs_free char *str = nm_platform_sysctl_slave_get_option (nm_device_get_platform(device), ifindex_slave, option->sysname);
 		int value;
 
 		if (str) {
@@ -332,7 +332,7 @@ enslave_slave (NMDevice *device,
 	NMDeviceBridge *self = NM_DEVICE_BRIDGE (device);
 
 	if (configure) {
-		if (!nm_platform_link_enslave (NM_PLATFORM_GET, nm_device_get_ip_ifindex (device), nm_device_get_ip_ifindex (slave)))
+		if (!nm_platform_link_enslave (nm_device_get_platform(device), nm_device_get_ip_ifindex (device), nm_device_get_ip_ifindex (slave)))
 			return FALSE;
 
 		commit_slave_options (slave, nm_connection_get_setting_bridge_port (connection));
@@ -356,7 +356,7 @@ release_slave (NMDevice *device,
 	gboolean success;
 
 	if (configure) {
-		success = nm_platform_link_release (NM_PLATFORM_GET,
+		success = nm_platform_link_release (nm_device_get_platform(device),
 		                                    nm_device_get_ip_ifindex (device),
 		                                    nm_device_get_ip_ifindex (slave));
 
@@ -400,7 +400,7 @@ create_and_realize (NMDevice *device,
 		}
 	}
 
-	plerr = nm_platform_link_bridge_add (NM_PLATFORM_GET,
+	plerr = nm_platform_link_bridge_add (nm_device_get_platform(device),
 	                                     iface,
 	                                     hwaddr ? mac_address : NULL,
 	                                     hwaddr ? ETH_ALEN : 0,

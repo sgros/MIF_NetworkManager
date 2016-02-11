@@ -82,7 +82,7 @@ update_properties (NMDevice *device)
 	const NMPlatformLnkVxlan *props;
 	NMDevice *parent;
 
-	props = nm_platform_link_get_lnk_vxlan (NM_PLATFORM_GET, nm_device_get_ifindex (device), NULL);
+	props = nm_platform_link_get_lnk_vxlan (nm_device_get_platform(device), nm_device_get_ifindex (device), NULL);
 	if (!props) {
 		_LOGW (LOGD_HW, "could not get vxlan properties");
 		return;
@@ -223,7 +223,7 @@ create_and_realize (NMDevice *device,
 	props.l2miss = nm_setting_vxlan_get_l2_miss (s_vxlan);
 	props.l3miss = nm_setting_vxlan_get_l3_miss (s_vxlan);
 
-	plerr = nm_platform_link_vxlan_add (NM_PLATFORM_GET, iface, &props, out_plink);
+	plerr = nm_platform_link_vxlan_add (nm_device_get_platform(device), iface, &props, out_plink);
 	if (plerr != NM_PLATFORM_ERROR_SUCCESS) {
 		g_set_error (error, NM_DEVICE_ERROR, NM_DEVICE_ERROR_CREATION_FAILED,
 		             "Failed to create VXLAN interface '%s' for '%s': %s",

@@ -174,7 +174,7 @@ update_properties (NMDevice *device)
 	ifindex = nm_device_get_ifindex (device);
 
 	if (ifindex > 0)
-		plnk = nm_platform_link_get_lnk_vlan (NM_PLATFORM_GET, ifindex, &plink);
+		plnk = nm_platform_link_get_lnk_vlan (nm_device_get_platform(device), ifindex, &plink);
 	if (   plnk
 	    && plink->parent
 	    && plink->parent != NM_PLATFORM_LINK_OTHER_NETNS)
@@ -231,7 +231,7 @@ create_and_realize (NMDevice *device,
 
 	vlan_id = nm_setting_vlan_get_id (s_vlan);
 
-	plerr = nm_platform_link_vlan_add (NM_PLATFORM_GET,
+	plerr = nm_platform_link_vlan_add (nm_device_get_platform(device),
 	                                   iface,
 	                                   parent_ifindex,
 	                                   vlan_id,
@@ -314,7 +314,7 @@ notify_new_device_added (NMDevice *device, NMDevice *new_device)
 	if (!nm_device_is_real (device))
 		return;
 
-	plnk = nm_platform_link_get_lnk_vlan (NM_PLATFORM_GET, nm_device_get_ifindex (device), &plink);
+	plnk = nm_platform_link_get_lnk_vlan (nm_device_get_platform(device), nm_device_get_ifindex (device), &plink);
 	if (!plnk)
 		return;
 
@@ -494,7 +494,7 @@ update_connection (NMDevice *device, NMConnection *connection)
 		nm_connection_add_setting (connection, (NMSetting *) s_vlan);
 	}
 
-	polnk = nm_platform_link_get_lnk (NM_PLATFORM_GET, ifindex, NM_LINK_TYPE_VLAN, &plink);
+	polnk = nm_platform_link_get_lnk (nm_device_get_platform(device), ifindex, NM_LINK_TYPE_VLAN, &plink);
 
 	if (polnk)
 		vlan_id = polnk->lnk_vlan.id;
@@ -588,7 +588,7 @@ act_stage1_prepare (NMDevice *dev, NMDeviceStateReason *reason)
 		                                 &egress_map,
 		                                 &n_egress_map);
 
-		nm_platform_link_vlan_change (NM_PLATFORM_GET,
+		nm_platform_link_vlan_change (nm_device_get_platform(dev),
 		                              nm_device_get_ifindex (dev),
 		                              NM_VLAN_FLAGS_ALL,
 		                              nm_setting_vlan_get_flags (s_vlan),

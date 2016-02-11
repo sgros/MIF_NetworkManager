@@ -82,6 +82,12 @@ nm_netns_controller_get_route_manager(void)
 }
 
 NMNetns *
+nm_netns_controller_get_root_netns(void)
+{
+	return nm_netns_controller_get_active_netns();
+}
+
+NMNetns *
 nm_netns_controller_get_active_netns(void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);

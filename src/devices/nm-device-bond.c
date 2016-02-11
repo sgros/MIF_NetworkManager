@@ -130,7 +130,7 @@ set_bond_attr (NMDevice *device, const char *attr, const char *value)
 	gboolean ret;
 	int ifindex = nm_device_get_ifindex (device);
 
-	ret = nm_platform_sysctl_master_set_option (NM_PLATFORM_GET, ifindex, attr, value);
+	ret = nm_platform_sysctl_master_set_option (nm_device_get_platform(device), ifindex, attr, value);
 	if (!ret)
 		_LOGW (LOGD_HW, "failed to set bonding attribute '%s' to '%s'", attr, value);
 	return ret;
@@ -164,7 +164,7 @@ update_connection (NMDevice *device, NMConnection *connection)
 	/* Read bond options from sysfs and update the Bond setting to match */
 	options = nm_setting_bond_get_valid_options (s_bond);
 	while (options && *options) {
-		gs_free char *value = nm_platform_sysctl_master_get_option (NM_PLATFORM_GET, ifindex, *options);
+		gs_free char *value = nm_platform_sysctl_master_get_option (nm_device_get_platform(device), ifindex, *options);
 		const char *defvalue = nm_setting_bond_get_option_default (s_bond, *options);
 
 		if (value && !ignore_if_zero (*options, value) && (g_strcmp0 (value, defvalue) != 0)) {
@@ -320,7 +320,7 @@ apply_bonding_config (NMDevice *device)
 	}
 
 	/* Clear ARP targets */
-	contents = nm_platform_sysctl_master_get_option (NM_PLATFORM_GET, ifindex, "arp_ip_target");
+	contents = nm_platform_sysctl_master_get_option (nm_device_get_platform (device), ifindex, "arp_ip_target");
 	set_arp_targets (device, contents, " \n", "-");
 	g_free (contents);
 
@@ -396,7 +396,7 @@ enslave_slave (NMDevice *device,
 
 	if (configure) {
 		nm_device_take_down (slave, TRUE);
-		success = nm_platform_link_enslave (NM_PLATFORM_GET,
+		success = nm_platform_link_enslave (nm_device_get_platform (device),
 		                                    nm_device_get_ip_ifindex (device),
 		                                    nm_device_get_ip_ifindex (slave));
 		nm_device_bring_up (slave, TRUE, &no_firmware);
@@ -420,7 +420,7 @@ release_slave (NMDevice *device,
 	gboolean success, no_firmware = FALSE;
 
 	if (configure) {
-		success = nm_platform_link_release (NM_PLATFORM_GET,
+		success = nm_platform_link_release (nm_device_get_platform (device),
 		                                    nm_device_get_ip_ifindex (device),
 		                                    nm_device_get_ip_ifindex (slave));
 
@@ -456,7 +456,7 @@ create_and_realize (NMDevice *device,
 
 	g_assert (iface);
 
-	plerr = nm_platform_link_bond_add (NM_PLATFORM_GET, iface, out_plink);
+	plerr = nm_platform_link_bond_add (nm_device_get_platform (device), iface, out_plink);
 	if (plerr != NM_PLATFORM_ERROR_SUCCESS) {
 		g_set_error (error, NM_DEVICE_ERROR, NM_DEVICE_ERROR_CREATION_FAILED,
 		             "Failed to create bond interface '%s' for '%s': %s",

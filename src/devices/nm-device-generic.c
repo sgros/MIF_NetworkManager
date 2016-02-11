@@ -46,7 +46,7 @@ enum {
 static NMDeviceCapabilities
 get_generic_capabilities (NMDevice *dev)
 {
-	if (nm_platform_link_supports_carrier_detect (NM_PLATFORM_GET, nm_device_get_ifindex (dev)))
+	if (nm_platform_link_supports_carrier_detect (nm_device_get_platform(dev), nm_device_get_ifindex (dev)))
 		return NM_DEVICE_CAP_CARRIER_DETECT;
 	else
 		return NM_DEVICE_CAP_NONE;
@@ -72,7 +72,7 @@ realize_start_notify (NMDevice *device, const NMPlatformLink *plink)
 	g_clear_pointer (&priv->type_description, g_free);
 	ifindex = nm_device_get_ip_ifindex (NM_DEVICE (self));
 	if (ifindex > 0)
-		priv->type_description = g_strdup (nm_platform_link_get_type_name (NM_PLATFORM_GET, ifindex));
+		priv->type_description = g_strdup (nm_platform_link_get_type_name (nm_device_get_platform(device), ifindex));
 }
 
 static gboolean
@@ -111,15 +111,21 @@ update_connection (NMDevice *device, NMConnection *connection)
 /**************************************************************/
 
 NMDevice *
-nm_device_generic_new (const NMPlatformLink *plink)
+nm_device_generic_new (const NMPlatformLink *plink, NMNetns *netns)
 {
+	NMDevice *device;
+
 	g_return_val_if_fail (plink != NULL, NULL);
 
-	return (NMDevice *) g_object_new (NM_TYPE_DEVICE_GENERIC,
-	                                  NM_DEVICE_IFACE, plink->name,
-	                                  NM_DEVICE_TYPE_DESC, "Generic",
-	                                  NM_DEVICE_DEVICE_TYPE, NM_DEVICE_TYPE_GENERIC,
-	                                  NULL);
+	device = (NMDevice *) g_object_new (NM_TYPE_DEVICE_GENERIC,
+	                                    NM_DEVICE_IFACE, plink->name,
+	                                    NM_DEVICE_TYPE_DESC, "Generic",
+	                                    NM_DEVICE_DEVICE_TYPE, NM_DEVICE_TYPE_GENERIC,
+	                                    NULL);
+
+	nm_device_connect_to_netns(device, netns);
+
+	return device;
 }
 
 static void

@@ -317,7 +317,7 @@ get_generic_capabilities (NMDevice *device)
 {
 	NMDeviceEthernet *self = NM_DEVICE_ETHERNET (device);
 
-	if (nm_platform_link_supports_carrier_detect (NM_PLATFORM_GET, nm_device_get_ifindex (device)))
+	if (nm_platform_link_supports_carrier_detect (nm_device_get_platform(device), nm_device_get_ifindex (device)))
 	    return NM_DEVICE_CAP_CARRIER_DETECT;
 	else {
 		_LOGI (LOGD_HW, "driver '%s' does not support carrier detection.",
@@ -572,7 +572,7 @@ build_supplicant_config (NMDeviceEthernet *self,
 	connection = nm_device_get_applied_connection (NM_DEVICE (self));
 	g_assert (connection);
 	con_uuid = nm_connection_get_uuid (connection);
-	mtu = nm_platform_link_get_mtu (NM_PLATFORM_GET,
+	mtu = nm_platform_link_get_mtu (nm_device_get_platform(NM_DEVICE (self)),
 	                                nm_device_get_ifindex (NM_DEVICE (self)));
 
 	config = nm_supplicant_config_new ();
@@ -1100,7 +1100,7 @@ dcb_state (NMDevice *device, gboolean timeout)
 	g_return_if_fail (nm_device_get_state (device) == NM_DEVICE_STATE_CONFIG);
 
 
-	carrier = nm_platform_link_is_connected (NM_PLATFORM_GET, nm_device_get_ifindex (device));
+	carrier = nm_platform_link_is_connected (nm_device_get_platform (device), nm_device_get_ifindex (device));
 	_LOGD (LOGD_DCB, "dcb_state() wait %d carrier %d timeout %d", priv->dcb_wait, carrier, timeout);
 
 	switch (priv->dcb_wait) {
@@ -1261,7 +1261,7 @@ act_stage2_config (NMDevice *device, NMDeviceStateReason *reason)
 	s_dcb = (NMSettingDcb *) device_get_setting (device, NM_TYPE_SETTING_DCB);
 	if (s_dcb) {
 		/* lldpad really really wants the carrier to be up */
-		if (nm_platform_link_is_connected (NM_PLATFORM_GET, nm_device_get_ifindex (device))) {
+		if (nm_platform_link_is_connected (nm_device_get_platform (device), nm_device_get_ifindex (device))) {
 			if (!dcb_enable (device)) {
 				*reason = NM_DEVICE_STATE_REASON_DCB_FCOE_FAILED;
 				return NM_ACT_STAGE_RETURN_FAILURE;
@@ -1297,7 +1297,7 @@ act_stage2_config (NMDevice *device, NMDeviceStateReason *reason)
 			if (mxu) {
 				_LOGD (LOGD_PPP, "set MTU to %u (PPP interface MRU %u, MTU %u)",
 				       mxu + PPPOE_ENCAP_OVERHEAD, mru, mtu);
-				nm_platform_link_set_mtu (NM_PLATFORM_GET,
+				nm_platform_link_set_mtu (nm_device_get_platform (device),
 				                          nm_device_get_ifindex (device),
 				                          mxu + PPPOE_ENCAP_OVERHEAD);
 			}
@@ -1596,7 +1596,7 @@ link_changed (NMDevice *device, NMPlatformLink *info)
 		_update_s390_subchannels (self);
 
 	if (!nm_device_get_initial_hw_address (device)) {
-		hwaddr = nm_platform_link_get_address (NM_PLATFORM_GET,
+		hwaddr = nm_platform_link_get_address (nm_device_get_platform (device),
 		                                       nm_device_get_ifindex (self),
 		                                       &hwaddrlen);
 		if (!nm_utils_hwaddr_matches (hwaddr, hwaddrlen, zero_hwaddr, ETH_ALEN)) {

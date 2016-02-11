@@ -373,6 +373,12 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 
 	nm_device_finish_init (device);
 
+	if (nm_device_is_real (device)) {
+		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
+		nm_device_removed (device);
+	}
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
+
 #if 0
 	nm_settings_device_added (priv->settings, device);
 	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
@@ -470,8 +476,7 @@ platform_link_added (NMNetns *self,
 		default:
 			nm_log_dbg (LOGD_NETNS, "Creating new generic device %s in network namespace %s",
 				    plink->name, priv->name);
-			device = nm_device_generic_new (plink);
-			nm_device_set_netns(device, self);
+			device = nm_device_generic_new (plink, self);
 			break;
 		}
 	}
@@ -584,7 +589,7 @@ platform_link_cb (NMPlatform *platform,
 }
 
 gboolean
-nm_netns_setup(NMNetns *self)
+nm_netns_setup(NMNetns *self, gboolean isroot)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
@@ -593,13 +598,24 @@ nm_netns_setup(NMNetns *self)
 			  G_CALLBACK (platform_link_cb),
 			  self);
 
-	/*
-	 * Enumerate all existing devices in the network namespace
-	 */
-	platform_query_devices (self);
+	priv->default_route_manager = nm_default_route_manager_new();
+	priv->route_manager = nm_route_manager_new();
 
-	/* Activate loopback interface in a new network namespace */
-	nm_platform_link_set_up (priv->platform, 1, NULL);
+	/*
+	 * For root network namespace NMManager enumerates devices
+	 * and loopback interface is activated in main function.
+	 * For all other network namespaces we have to do it by our
+	 * selves!
+	 */
+	if (!isroot) {
+		/*
+		 * Enumerate all existing devices in the network namespace
+		 */
+		platform_query_devices (self);
+
+		/* Activate loopback interface in a new network namespace */
+		nm_platform_link_set_up (priv->platform, 1, NULL);
+	}
 
 	return TRUE;
 }
@@ -614,21 +630,16 @@ nm_netns_stop(NMNetns *self)
 
 	nm_platform_netns_destroy(priv->platform, priv->name);
 
-	g_object_unref(priv->platform);
+	g_clear_object(&priv->platform);
 }
 
 NMNetns *
 nm_netns_new (const char *netns_name)
 {
 	NMNetns *self;
-	NMNetnsPrivate *priv;
 
 	self = g_object_new (NM_TYPE_NETNS, NULL);
 	nm_netns_set_name(self, netns_name);
-
-	priv = NM_NETNS_GET_PRIVATE (self);
-	priv->default_route_manager = nm_default_route_manager_new();
-	priv->route_manager = nm_route_manager_new();
 
 	return self;
 }

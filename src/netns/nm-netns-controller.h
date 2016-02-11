@@ -64,7 +64,7 @@ void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns)
 NMNetns * nm_netns_controller_get_active_netns(void);
 NMNetns * nm_netns_controller_get_root_netns(void);
 
-NMPlatform * nm_netns_controller_get_active_platform(NMNetnsController *self);
+NMPlatform * nm_netns_controller_get_active_platform(void);
 NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);
 
 NMDefaultRouteManager *nm_netns_controller_get_default_route_manager(void);

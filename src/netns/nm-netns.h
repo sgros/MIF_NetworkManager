@@ -92,7 +92,7 @@ NMPlatform * nm_netns_get_platform(NMNetns *self);
 
 NMNetns *nm_netns_new(const char *netns_name);
 
-gboolean nm_netns_setup(NMNetns *netns);
+gboolean nm_netns_setup(NMNetns *netns, gboolean isroot);
 
 void nm_netns_stop(NMNetns *netns);
 

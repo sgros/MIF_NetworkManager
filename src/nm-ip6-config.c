@@ -323,7 +323,7 @@ nm_ip6_config_addresses_sort (NMIP6Config *self, NMSettingIP6ConfigPrivacy use_t
 }
 
 NMIP6Config *
-nm_ip6_config_capture (int ifindex, gboolean capture_resolv_conf, NMSettingIP6ConfigPrivacy use_temporary)
+nm_ip6_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf, NMSettingIP6ConfigPrivacy use_temporary)
 {
 	NMIP6Config *config;
 	NMIP6ConfigPrivate *priv;
@@ -334,7 +334,7 @@ nm_ip6_config_capture (int ifindex, gboolean capture_resolv_conf, NMSettingIP6Co
 	gboolean notify_nameservers = FALSE;
 
 	/* Slaves have no IP configuration */
-	if (nm_platform_link_get_master (NM_PLATFORM_GET, ifindex) > 0)
+	if (nm_platform_link_get_master (nm_netns_get_platform (netns), ifindex) > 0)
 		return NULL;
 
 	config = nm_ip6_config_new (ifindex);
@@ -343,8 +343,8 @@ nm_ip6_config_capture (int ifindex, gboolean capture_resolv_conf, NMSettingIP6Co
 	g_array_unref (priv->addresses);
 	g_array_unref (priv->routes);
 
-	priv->addresses = nm_platform_ip6_address_get_all (NM_PLATFORM_GET, ifindex);
-	priv->routes = nm_platform_ip6_route_get_all (NM_PLATFORM_GET, ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
+	priv->addresses = nm_platform_ip6_address_get_all (nm_netns_get_platform (netns), ifindex);
+	priv->routes = nm_platform_ip6_route_get_all (nm_netns_get_platform (netns), ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
 
 	/* Extract gateway from default route */
 	old_gateway = priv->gateway;
@@ -408,7 +408,7 @@ nm_ip6_config_capture (int ifindex, gboolean capture_resolv_conf, NMSettingIP6Co
 }
 
 gboolean
-nm_ip6_config_commit (const NMIP6Config *config, int ifindex, gboolean routes_full_sync)
+nm_ip6_config_commit (const NMIP6Config *config, NMNetns *netns, int ifindex, gboolean routes_full_sync)
 {
 	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
 	int i;
@@ -418,7 +418,7 @@ nm_ip6_config_commit (const NMIP6Config *config, int ifindex, gboolean routes_fu
 	g_return_val_if_fail (config != NULL, FALSE);
 
 	/* Addresses */
-	nm_platform_ip6_address_sync (NM_PLATFORM_GET, ifindex, priv->addresses, TRUE);
+	nm_platform_ip6_address_sync (nm_netns_get_platform (netns), ifindex, priv->addresses, TRUE);
 
 	/* Routes */
 	{

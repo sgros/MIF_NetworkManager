@@ -103,12 +103,12 @@ dhcp4_state_changed (NMDhcpClient *client,
 	switch (state) {
 	case NM_DHCP_STATE_BOUND:
 		g_assert (ip4_config);
-		existing = nm_ip4_config_capture (ifindex, FALSE);
+		existing = nm_ip4_config_capture (nm_netns_controller_get_root_netns(), ifindex, FALSE);
 		if (last_config)
 			nm_ip4_config_subtract (existing, last_config);
 
 		nm_ip4_config_merge (existing, ip4_config, NM_IP_CONFIG_MERGE_DEFAULT);
-		if (!nm_ip4_config_commit (existing, ifindex, TRUE, global_opt.priority_v4))
+		if (!nm_ip4_config_commit (existing, nm_netns_controller_get_root_netns(), ifindex, TRUE, global_opt.priority_v4))
 			nm_log_warn (LOGD_DHCP4, "(%s): failed to apply DHCPv4 config", global_opt.ifname);
 
 		if (last_config)
@@ -239,12 +239,12 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, gpointer user_da
 		nm_platform_sysctl_set (NM_PLATFORM_GET, nm_utils_ip6_property_path (global_opt.ifname, "mtu"), val);
 	}
 
-	existing = nm_ip6_config_capture (ifindex, FALSE, global_opt.tempaddr);
+	existing = nm_ip6_config_capture (nm_netns_controller_get_root_netns(), ifindex, FALSE, global_opt.tempaddr);
 	if (last_config)
 		nm_ip6_config_subtract (existing, last_config);
 
 	nm_ip6_config_merge (existing, ip6_config, NM_IP_CONFIG_MERGE_DEFAULT);
-	if (!nm_ip6_config_commit (existing, ifindex, TRUE))
+	if (!nm_ip6_config_commit (existing, nm_netns_controller_get_root_netns(), ifindex, TRUE))
 		nm_log_warn (LOGD_IP6, "(%s): failed to apply IPv6 config", global_opt.ifname);
 
 	if (last_config)

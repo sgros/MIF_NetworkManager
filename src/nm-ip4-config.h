@@ -23,6 +23,7 @@
 
 #include "nm-exported-object.h"
 #include "nm-setting-ip4-config.h"
+#include "nm-netns.h"
 
 #define NM_TYPE_IP4_CONFIG (nm_ip4_config_get_type ())
 #define NM_IP4_CONFIG(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_IP4_CONFIG, NMIP4Config))
@@ -69,8 +70,8 @@ NMIP4Config * nm_ip4_config_new (int ifindex);
 int nm_ip4_config_get_ifindex (const NMIP4Config *config);
 
 /* Integration with nm-platform and nm-setting */
-NMIP4Config *nm_ip4_config_capture (int ifindex, gboolean capture_resolv_conf);
-gboolean nm_ip4_config_commit (const NMIP4Config *config, int ifindex, gboolean routes_full_sync, gint64 default_route_metric);
+NMIP4Config *nm_ip4_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf);
+gboolean nm_ip4_config_commit (const NMIP4Config *config, NMNetns *netns, int ifindex, gboolean routes_full_sync, gint64 default_route_metric);
 void nm_ip4_config_merge_setting (NMIP4Config *config, NMSettingIPConfig *setting, guint32 default_route_metric);
 NMSetting *nm_ip4_config_create_setting (const NMIP4Config *config);
 

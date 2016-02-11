@@ -95,10 +95,13 @@ void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns)
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
        	nm_log_dbg (LOGD_NETNS, "Activating network namespace %s (net_id=%d)",
-		    nm_netns_get_name(priv->active_ns), nm_netns_get_id(priv->root_ns));
+		    nm_netns_get_name(netns), nm_netns_get_id(netns));
 
-	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
-	g_object_unref(priv->root_ns);
+	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(netns));
+
+	if (priv->active_ns)
+		g_object_unref(priv->active_ns);
+
 	priv->active_ns = netns;
 	g_object_ref(netns);
 }
@@ -122,9 +125,9 @@ nm_netns_controller_get_active_netns(void)
 }
 
 NMPlatform *
-nm_netns_controller_get_active_platform(NMNetnsController *self)
+nm_netns_controller_get_active_platform(void)
 {
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
 	return nm_netns_get_platform(priv->active_ns);
 }
@@ -180,12 +183,6 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 
 	nm_netns_set_id(netns, netns_id);
 
-	/*
-         * Activate new network namespace. Again, which platform module we
-         * use is not important, so use the main one.
-         */
-	nm_platform_netns_activate(NM_PLATFORM_GET, netns_id);
-
 	if (isroot) {
 		nm_netns_set_platform(netns, NM_PLATFORM_GET);
 		priv->root_ns = netns;
@@ -194,15 +191,17 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 		/* Instantiate a new platform layer for the created network namespace */
 		nm_netns_set_platform(netns, nm_linux_platform_new());
 	}
-	nm_netns_controller_activate_root_netns(self);
 
-	if (!isroot) {
-		if (!nm_netns_setup(netns)) {
-	        	nm_log_dbg (LOGD_NETNS, "error setting up namespace %s ", netnsname);
-			g_object_unref(netns);
-			return NULL;
-		}
+	nm_netns_controller_activate_netns(self, netns);
+
+	if (!nm_netns_setup(netns, isroot)) {
+        	nm_log_dbg (LOGD_NETNS, "error setting up namespace %s ", netnsname);
+		g_object_unref(netns);
+		nm_netns_controller_activate_root_netns(self);
+		return NULL;
 	}
+
+	nm_netns_controller_activate_root_netns(self);
 
 	path = nm_netns_export(netns);
 	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
@@ -240,7 +239,6 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
 	NMNetns *netns;
 
 	if ((netns = create_new_namespace(self, netnsname, FALSE)) != NULL) {
-		g_dbus_method_invocation_return_value (context, NULL);
 		g_dbus_method_invocation_return_value (context,
 						       g_variant_new ("(o)",
 						       nm_exported_object_get_path (NM_EXPORTED_OBJECT (netns))));
@@ -287,9 +285,14 @@ nm_netns_controller_get(void)
 void
 nm_netns_controller_stop (NMNetnsController *self)
 {
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	NMNetnsControllerPrivate *priv;
 	GHashTableIter iter;
 	gpointer value;
+
+	if (!self)
+		return;
+
+	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	g_hash_table_iter_init (&iter, priv->network_namespaces);
 	while (g_hash_table_iter_next (&iter, NULL, &value))
