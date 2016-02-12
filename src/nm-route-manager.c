@@ -1151,7 +1151,8 @@ nm_route_manager_init (NMRouteManager *self)
 
 	priv->netns = g_object_ref (nm_netns_controller_get_active_netns());
 
-	g_assert(priv->netns);
+	if (priv->netns == NULL)
+		nm_log_warn (LOGD_NETNS, "Network namespace while initializin route manager is not defined");
 
 	priv->ip4_routes.entries = g_array_new (FALSE, FALSE, sizeof (NMPlatformIP4Route));
 	priv->ip6_routes.entries = g_array_new (FALSE, FALSE, sizeof (NMPlatformIP6Route));

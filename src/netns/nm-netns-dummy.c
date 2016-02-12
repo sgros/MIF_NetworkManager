@@ -73,7 +73,15 @@ nm_netns_stop (NMNetns *self)
 NMNetns *
 nm_netns_new (const char *netns_name)
 {
-	return g_object_new (NM_TYPE_NETNS, NULL);
+	NMNetns *netns;
+	NMNetnsPrivate *priv;
+
+	netns = g_object_new (NM_TYPE_NETNS, NULL);
+
+	priv = NM_NETNS_GET_PRIVATE (netns);
+	priv->route_manager = nm_route_manager_new();
+
+	return netns;
 }
 
 /******************************************************************/
@@ -81,9 +89,6 @@ nm_netns_new (const char *netns_name)
 static void
 nm_netns_init (NMNetns *self)
 {
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
-
-	priv->route_manager = nm_route_manager_new();
 }
 
 static void
