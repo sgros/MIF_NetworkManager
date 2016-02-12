@@ -45,7 +45,7 @@
 
 #include "nm-platform.h"
 #include "nm-linux-platform.h"
-#include "nm-netns-dummy.h"
+#include "nm-netns.h"
 #include "nm-netns-controller.h"
 #include "NetworkManagerUtils.h"
 
@@ -129,7 +129,7 @@ nm_netns_controller_setup (void)
 
 	priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
-	priv->netns = nm_netns_new();
+	priv->netns = nm_netns_new(NULL);
 
         nm_log_dbg (LOGD_NETNS, "setup %s singleton (%p, %s)",
 			"NMNetnsController", singleton_instance,

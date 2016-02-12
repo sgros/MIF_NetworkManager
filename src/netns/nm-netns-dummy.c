@@ -34,7 +34,7 @@
 #include "nm-default-route-manager.h"
 #include "nm-route-manager.h"
 #include "nm-platform.h"
-#include "nm-netns-dummy.h"
+#include "nm-netns.h"
 
 G_DEFINE_TYPE (NMNetns, nm_netns, G_TYPE_OBJECT)
 
@@ -71,7 +71,7 @@ nm_netns_stop (NMNetns *self)
 }
 
 NMNetns *
-nm_netns_new (void)
+nm_netns_new (const char *netns_name)
 {
 	return g_object_new (NM_TYPE_NETNS, NULL);
 }
