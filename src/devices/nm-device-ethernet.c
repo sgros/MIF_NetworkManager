@@ -148,6 +148,7 @@ static void
 _update_s390_subchannels (NMDeviceEthernet *self)
 {
 	NMDeviceEthernetPrivate *priv = NM_DEVICE_ETHERNET_GET_PRIVATE (self);
+	NMPlatform *platform;
 	GUdevDevice *dev;
 	GUdevDevice *parent = NULL;
 	const char *parent_path, *item, *driver;
@@ -156,7 +157,16 @@ _update_s390_subchannels (NMDeviceEthernet *self)
 	GError *error = NULL;
 
 	ifindex = nm_device_get_ifindex (NM_DEVICE (self));
-	dev = (GUdevDevice *) nm_platform_link_get_udev_device (NM_PLATFORM_GET, ifindex);
+	platform = nm_device_get_platform (NM_DEVICE (self));
+
+	/*
+	 * This function is called from the object initialization code
+	 * and at that time no platform specific object is created.
+	 * So, in that case use the platform object that is bound to
+	 * root namespace. In all other cases take platform from the
+	 * device itself.
+	 */
+	dev = (GUdevDevice *) nm_platform_link_get_udev_device (platform ? platform : NM_PLATFORM_GET, ifindex);
 	if (!dev) {
 		_LOGW (LOGD_DEVICE | LOGD_HW, "failed to find device %d '%s' with udev",
 		       ifindex, str_if_set (nm_device_get_iface (NM_DEVICE (self)), "(null)"));

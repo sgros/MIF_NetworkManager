@@ -10821,7 +10821,15 @@ nm_device_get_netns (NMDevice *self)
 NMPlatform *
 nm_device_get_platform (NMDevice *self)
 {
-	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+	NMDevicePrivate *priv;
+
+	if (self == NULL)
+		return NULL;
+
+	priv = NM_DEVICE_GET_PRIVATE (self);
+
+	if (priv == NULL)
+		return NULL;
 
 	return nm_netns_get_platform(priv->netns);
 }

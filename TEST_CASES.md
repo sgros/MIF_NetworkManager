@@ -1,8 +1,6 @@
-# Test cases #
+# Management of network namespaces #
 
-## Management of network namespaces ##
-
-### Test case 1 ###
+## Test case 1 ##
 
 Objective: Determine if NetworkManager, properly manages root namespace when started
 
@@ -14,7 +12,7 @@ Expected state:
 
 1. In /var/run/netns there should be "rootns" file
 
-### Test case 2 ###
+## Test case 2 ##
 
 Objective: Determine if NetworkManager, properly manages root namespace when stopped
 
@@ -26,7 +24,7 @@ Expected state:
 
 1. In /var/run/netns there shouldn't be "rootns" file anymore
 
-### Test case 3 ###
+## Test case 3 ##
 
 Objective: Determine if NetworkManager properly creates a new network namespace
 
@@ -63,5 +61,46 @@ ip netns exec testns bash
 ip addr sh
 ```
 
-## Management of provisioning domains ##
+## TC3: Moving device to another namespace ##
+
+Objective: Determine if NetworkManager properly registers that
+some device is moved to another network namespace
+
+Steps:
+
+1. Start NetworkManager
+
+Expected result: NetworkManager running
+
+2. Create new test device:
+
+```
+ip tuntap add dev tun0 mode tun
+```
+
+Expected result: new network device with name tun0 visible in root network namespace
+
+2. Create new network namespace:
+
+```
+dbus-send --system \
+	--print-reply \
+	--dest=org.freedesktop.NetworkManager \
+	/org/freedesktop/NetworkManager/NetworkNamespacesController \
+	org.freedesktop.NetworkManager.NetworkNamespacesController.AddNetworkNamespace \
+	string:"testns"
+```
+
+Expected result: new network namespace visible using `ip netns list`
+
+3. Move device to the new network namespace:
+
+```
+ip link dev tun0 netns testns
+```
+
+Expected result: network manager removes device
+
+
+# Management of provisioning domains #
 

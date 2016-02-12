@@ -41,8 +41,15 @@ G_DEFINE_TYPE (NMNetnsController, nm_netns_controller, NM_TYPE_EXPORTED_OBJECT)
 enum {
 	PROP_0,
 	PROP_REGISTER_SINGLETON,
+	PROP_NETWORK_NAMESPACES,
 	LAST_PROP,
 };
+
+enum {
+	NETNS_ADDED,
+	LAST_SIGNAL,
+};
+static guint signals[LAST_SIGNAL] = { 0 };
 
 typedef struct {
 	gboolean register_singleton;
@@ -81,6 +88,8 @@ void nm_netns_controller_activate_root_netns(void)
        	nm_log_dbg (LOGD_NETNS, "Activating root network namespace %s (net_id=%d)",
 		    nm_netns_get_name(priv->root_ns), nm_netns_get_id(priv->root_ns));
 
+	g_assert(priv->root_ns);
+
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
 
 	if (priv->active_ns)
@@ -96,6 +105,8 @@ void nm_netns_controller_activate_netns(NMNetns *netns)
 
        	nm_log_dbg (LOGD_NETNS, "Activating network namespace %s (net_id=%d)",
 		    nm_netns_get_name(netns), nm_netns_get_id(netns));
+
+	g_assert(netns);
 
 	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(netns));
 
@@ -205,6 +216,10 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 
 	path = nm_netns_export(netns);
 	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
+
+	/* Emit D-Bus signals */
+	g_signal_emit (self, signals[NETNS_ADDED], 0, netns);
+	g_object_notify (G_OBJECT (self), NM_NETNS_CONTROLLER_NETWORK_NAMESPACES);
 
 	return netns;
 }
@@ -340,7 +355,8 @@ static void
 set_property (GObject *object, guint prop_id,
 	      const GValue *value, GParamSpec *pspec)
 {
-	NMNetnsControllerPrivate *priv =  NM_NETNS_CONTROLLER_GET_PRIVATE (object);
+	NMNetnsController *self = NM_NETNS_CONTROLLER (object);
+	NMNetnsControllerPrivate *priv =  NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	switch (prop_id) {
 	case PROP_REGISTER_SINGLETON:
@@ -357,6 +373,30 @@ static void
 get_property (GObject *object, guint prop_id,
 	      GValue *value, GParamSpec *pspec)
 {
+	NMNetnsController *self = NM_NETNS_CONTROLLER (object);
+	NMNetnsControllerPrivate *priv =  NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+
+	switch (prop_id) {
+	case PROP_NETWORK_NAMESPACES: {
+		GHashTableIter iter;
+		gpointer key;
+		char **paths;
+		guint i;
+
+		paths = g_new (char *, g_hash_table_size (priv->network_namespaces) + 1);
+
+		i = 0;
+		g_hash_table_iter_init (&iter, priv->network_namespaces);
+		while (g_hash_table_iter_next (&iter, &key, NULL))
+			paths[i++] = g_strdup (key);
+		paths[i] = NULL;
+		g_value_take_boxed (value, paths);
+		break;
+	}
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
 }
 
 static void
@@ -381,7 +421,20 @@ nm_netns_controller_class_init (NMNetnsControllerClass *klass)
 				   G_PARAM_CONSTRUCT_ONLY |
 				   G_PARAM_STATIC_STRINGS));
 
-// TODO: Signal that new namespace is added
+	g_object_class_install_property
+	 (object_class, PROP_NETWORK_NAMESPACES,
+	     g_param_spec_boxed (NM_NETNS_CONTROLLER_NETWORK_NAMESPACES, "", "",
+				 G_TYPE_STRV,
+				 G_PARAM_READABLE |
+				 G_PARAM_STATIC_STRINGS));
+
+	/* Signals */
+	signals[NETNS_ADDED] =
+		g_signal_new (NM_NETNS_CONTROLLER_NETNS_ADDED,
+		              G_OBJECT_CLASS_TYPE (object_class),
+		              G_SIGNAL_RUN_FIRST,
+		              0, NULL, NULL, NULL,
+		              G_TYPE_NONE, 1, NM_TYPE_NETNS);
 
 // TODO: Signal that namespace is removed
 

@@ -49,6 +49,10 @@ typedef struct {
 } NMNetnsControllerClass;
 
 #define NM_NETNS_CONTROLLER_REGISTER_SINGLETON		"register-singleton"
+#define NM_NETNS_CONTROLLER_NETWORK_NAMESPACES		"network-namespaces"
+
+/* Signals */
+#define NM_NETNS_CONTROLLER_NETNS_ADDED			"network-namespace-added"
 
 GType nm_netns_controller_get_type (void);
 

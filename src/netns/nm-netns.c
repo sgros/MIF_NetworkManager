@@ -156,7 +156,15 @@ nm_netns_set_platform(NMNetns *self, NMPlatform *platform)
 NMPlatform *
 nm_netns_get_platform(NMNetns *self)
 {
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMNetnsPrivate *priv;
+
+	if (self == NULL)
+		return NULL;
+
+	priv = NM_NETNS_GET_PRIVATE (self);
+
+	if (priv == NULL)
+		return NULL;
 
 	return priv->platform;
 }

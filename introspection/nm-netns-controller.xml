@@ -34,6 +34,23 @@
       </arg>
     </method>
 
+    <property name="NetworkNamespaces" type="ao" access="read">
+      <tp:docstring>
+        A list of all network namespaces managed by NetworkManager.
+      </tp:docstring>
+    </property>
+
+    <signal name="NetworkNamespaceAdded">
+      <tp:docstring>
+        A network namespace was added to the system
+      </tp:docstring>
+      <arg name="netns_path" type="o">
+        <tp:docstring>
+          The object path of the newly added network namespace.
+        </tp:docstring>
+      </arg>
+    </signal>
+
   </interface>
 </node>
 
