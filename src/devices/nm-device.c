@@ -5970,11 +5970,13 @@ addrconf6_start (NMDevice *self, NMSettingIP6ConfigPrivacy use_tempaddr)
 	s_ip6 = NM_SETTING_IP6_CONFIG (nm_connection_get_setting_ip6_config (connection));
 	g_assert (s_ip6);
 
-	priv->rdisc = nm_lndp_rdisc_new (nm_device_get_ip_ifindex (self),
+	priv->rdisc = nm_lndp_rdisc_new (priv->netns,
+	                                 nm_device_get_ip_ifindex (self),
 	                                 nm_device_get_ip_iface (self),
 	                                 nm_connection_get_uuid (connection),
 	                                 nm_setting_ip6_config_get_addr_gen_mode (s_ip6),
 	                                 &error);
+
 	if (!priv->rdisc) {
 		_LOGE (LOGD_IP6, "addrconf6: failed to start router discovery: %s", error->message);
 		g_error_free (error);

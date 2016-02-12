@@ -58,8 +58,8 @@ NMNetnsController * nm_netns_controller_get (void);
 
 void nm_netns_controller_stop (NMNetnsController *self);
 
-void nm_netns_controller_activate_root_netns(NMNetnsController *self);
-void nm_netns_controller_activate_netns(NMNetnsController *self, NMNetns *netns);
+void nm_netns_controller_activate_root_netns(void);
+void nm_netns_controller_activate_netns(NMNetns *netns);
 
 NMNetns * nm_netns_controller_get_active_netns(void);
 NMNetns * nm_netns_controller_get_root_netns(void);

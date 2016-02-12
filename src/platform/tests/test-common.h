@@ -8,7 +8,7 @@
 #include "nm-platform.h"
 #include "nm-fake-platform.h"
 #include "nm-linux-platform.h"
-#include "nm-netns-controller-dummy.h"
+#include "nm-netns-controller.h"
 
 #include "nm-test-utils.h"
 

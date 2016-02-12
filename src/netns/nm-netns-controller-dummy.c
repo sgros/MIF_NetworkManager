@@ -46,7 +46,7 @@
 #include "nm-platform.h"
 #include "nm-linux-platform.h"
 #include "nm-netns-dummy.h"
-#include "nm-netns-controller-dummy.h"
+#include "nm-netns-controller.h"
 #include "NetworkManagerUtils.h"
 
 G_DEFINE_TYPE (NMNetnsController, nm_netns_controller, G_TYPE_OBJECT)
@@ -72,6 +72,14 @@ typedef struct {
 NM_DEFINE_SINGLETON_INSTANCE (NMNetnsController);
 
 NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
+
+void nm_netns_controller_activate_root_netns(void)
+{
+}
+
+void nm_netns_controller_activate_netns(NMNetns *netns)
+{
+}
 
 NMRouteManager *
 nm_netns_controller_get_route_manager(void)
@@ -108,12 +116,12 @@ nm_netns_controller_get_active_netns(void)
  * NetworkManager will typically use only one network manager controller
  * object during its run.
  */
-void
+gboolean
 nm_netns_controller_setup (void)
 {
 	NMNetnsControllerPrivate *priv;
 
-        g_return_if_fail (!singleton_instance);
+        g_return_val_if_fail (!singleton_instance, FALSE);
 
         singleton_instance = nm_netns_controller_new();
 
@@ -126,6 +134,8 @@ nm_netns_controller_setup (void)
         nm_log_dbg (LOGD_NETNS, "setup %s singleton (%p, %s)",
 			"NMNetnsController", singleton_instance,
 			G_OBJECT_TYPE_NAME (singleton_instance));
+
+	return TRUE;
 }
 
 NMNetnsController *

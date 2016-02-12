@@ -29,6 +29,8 @@
 
 #include "nm-linux-platform.h"
 
+#include "nm-netns-controller.h"
+
 #include "nm-test-utils.h"
 
 NMTST_DEFINE ();
@@ -54,6 +56,12 @@ main (int argc, char **argv)
 
 	nm_linux_platform_setup ();
 
+	/* Set up network namespace controller */
+	if (!nm_netns_controller_setup ()) {
+		g_print ("failed to initialize network namespace controller");
+		return EXIT_FAILURE;
+	}
+
 	if (argv[1]) {
 		ifname = argv[1];
 		ifindex = nm_platform_link_get_ifindex (NM_PLATFORM_GET, ifname);
@@ -62,7 +70,8 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	rdisc = nm_lndp_rdisc_new (ifindex,
+	rdisc = nm_lndp_rdisc_new (nm_netns_controller_get_root_netns (),
+	                           ifindex,
 	                           ifname,
 	                           "8ce666e8-d34d-4fb1-b858-f15a7al28086",
 	                           NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_EUI64,

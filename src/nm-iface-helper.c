@@ -46,7 +46,7 @@ extern unsigned int if_nametoindex (const char *__ifname);
 #include "nm-utils.h"
 #include "nm-setting-ip6-config.h"
 
-#include "nm-netns-controller-dummy.h"
+#include "nm-netns-controller.h"
 
 #if !defined(NM_DIST_VERSION)
 # define NM_DIST_VERSION VERSION
@@ -480,7 +480,7 @@ main (int argc, char *argv[])
 	if (global_opt.slaac) {
 		nm_platform_link_set_user_ipv6ll_enabled (NM_PLATFORM_GET, ifindex, TRUE);
 
-		rdisc = nm_lndp_rdisc_new (ifindex, global_opt.ifname, global_opt.uuid, global_opt.addr_gen_mode, NULL);
+		rdisc = nm_lndp_rdisc_new (nm_netns_controller_get_root_netns (), ifindex, global_opt.ifname, global_opt.uuid, global_opt.addr_gen_mode, NULL);
 		g_assert (rdisc);
 
 		if (iid)
