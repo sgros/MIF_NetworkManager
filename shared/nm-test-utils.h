@@ -1039,16 +1039,10 @@ _nmtst_assert_ip6_address (const char *file, int line, const struct in6_addr *ad
 #define nmtst_assert_ip6_address(addr, str_expected) _nmtst_assert_ip6_address (__FILE__, __LINE__, addr, str_expected)
 
 /* Deprecated: don't use this overly verbose macro. */
-#define FAIL(test_name, fmt, ...) \
-    G_STMT_START { \
-        g_error ("%s:%d: FAIL[%s]: " fmt, __FILE__, __LINE__, test_name, ## __VA_ARGS__); \
-    } G_STMT_END
-
-/* Deprecated: don't use this overly verbose macro. */
 #define ASSERT(x, test_name, fmt, ...) \
     G_STMT_START { \
         if (!(x)) { \
-            FAIL (test_name, fmt, ## __VA_ARGS__); \
+            g_error ("%s:%d: FAIL[%s]: " fmt, __FILE__, __LINE__, test_name, ## __VA_ARGS__); \
         } \
     } G_STMT_END
 
@@ -1330,6 +1324,56 @@ nmtst_ip6_config_clone (NMIP6Config *config)
 }
 
 #endif
+
+#ifdef NM_SETTING_IP_CONFIG_H
+inline static void
+nmtst_setting_ip_config_add_address (NMSettingIPConfig *s_ip,
+                                     const char *address,
+                                     guint prefix)
+{
+	NMIPAddress *addr;
+	int family;
+
+	g_assert (s_ip);
+
+	if (nm_utils_ipaddr_valid (AF_INET, address))
+		family = AF_INET;
+	else if (nm_utils_ipaddr_valid (AF_INET6, address))
+		family = AF_INET6;
+	else
+		g_assert_not_reached ();
+
+	addr = nm_ip_address_new (family, address, prefix, NULL);
+	g_assert (addr);
+	g_assert (nm_setting_ip_config_add_address (s_ip, addr));
+	nm_ip_address_unref (addr);
+}
+
+inline static void
+nmtst_setting_ip_config_add_route (NMSettingIPConfig *s_ip,
+                                   const char *dest,
+                                   guint prefix,
+                                   const char *next_hop,
+                                   gint64 metric)
+{
+	NMIPRoute *route;
+	int family;
+
+	g_assert (s_ip);
+
+	if (nm_utils_ipaddr_valid (AF_INET, dest))
+		family = AF_INET;
+	else if (nm_utils_ipaddr_valid (AF_INET6, dest))
+		family = AF_INET6;
+	else
+		g_assert_not_reached ();
+
+	route = nm_ip_route_new (family, dest, prefix, next_hop, metric, NULL);
+	g_assert (route);
+	g_assert (nm_setting_ip_config_add_route (s_ip, route));
+	nm_ip_route_unref (route);
+}
+#endif /* NM_SETTING_IP_CONFIG_H */
 
 #if (defined(__NM_SIMPLE_CONNECTION_H__) && defined(__NM_SETTING_CONNECTION_H__)) || (defined(NM_CONNECTION_H))
 
