@@ -239,9 +239,9 @@ remove_device (NMNetns *self,
 		}
 	}
 
-#if 0
-	g_signal_handlers_disconnect_matched (device, G_SIGNAL_MATCH_DATA, 0, 0, NULL, NULL, manager);
+	g_signal_handlers_disconnect_matched (device, G_SIGNAL_MATCH_DATA, 0, 0, NULL, NULL, self);
 
+#if 0
 	nm_settings_device_removed (priv->settings, device, quitting);
 #endif
 	priv->devices = g_slist_remove (priv->devices, device);
@@ -263,6 +263,12 @@ remove_device (NMNetns *self,
 #if 0
 	check_if_startup_complete (manager);
 #endif
+}
+
+static void
+device_removed_cb (NMDevice *device, gpointer user_data)
+{
+	remove_device (NM_NETNS (user_data), device, FALSE, TRUE);
 }
 
 /**
@@ -323,11 +329,13 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	g_signal_connect (device, NM_DEVICE_AUTH_REQUEST,
 			  G_CALLBACK (device_auth_request_cb),
 			  self);
+#endif
 
 	g_signal_connect (device, NM_DEVICE_REMOVED,
 			  G_CALLBACK (device_removed_cb),
 			  self);
 
+#if 0
 	g_signal_connect (device, NM_DEVICE_RECHECK_ASSUME,
 			  G_CALLBACK (recheck_assume_connection_cb),
 			  self);
