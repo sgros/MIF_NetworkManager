@@ -58,6 +58,50 @@
       </tp:docstring>
     </property>
 
+    <signal name="NetnsDeviceAdded">
+      <tp:docstring>
+        Device was added to network namespace
+      </tp:docstring>
+      <arg name="device_path" type="o">
+        <tp:docstring>
+          The object path of network device that was added.
+        </tp:docstring>
+      </arg>
+    </signal>
+
+    <signal name="NetnsDeviceRemoved">
+      <tp:docstring>
+        Device was removed from network namespace
+      </tp:docstring>
+      <arg name="device_path" type="o">
+        <tp:docstring>
+          The object path of network device that was removed.
+        </tp:docstring>
+      </arg>
+    </signal>
+
+    <signal name="NetnsInternalDeviceAdded">
+      <tp:docstring>
+        Device was added to network namespace
+      </tp:docstring>
+      <arg name="device_path" type="o">
+        <tp:docstring>
+          The object path of network device that was added.
+        </tp:docstring>
+      </arg>
+    </signal>
+
+    <signal name="NetnsInternalDeviceRemoved">
+      <tp:docstring>
+        Device was removed from network namespace
+      </tp:docstring>
+      <arg name="device_path" type="o">
+        <tp:docstring>
+          The object path of network device that was removed.
+        </tp:docstring>
+      </arg>
+    </signal>
+
   </interface>
 </node>
 

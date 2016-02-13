@@ -59,6 +59,11 @@
 #define NM_NETNS_GLOBAL_DNS_CONFIGURATION "global-dns-configuration"
 #define NM_NETNS_ALL_DEVICES "all-devices"
 
+#define NM_NETNS_DEVICE_ADDED			"netns-device-added"
+#define NM_NETNS_DEVICE_REMOVED			"netns-device-removed"
+#define NM_NETNS_INTERNAL_DEVICE_ADDED		"netns-internal-device-added"
+#define NM_NETNS_INTERNAL_DEVICE_REMOVED	"netns-internal-device-removed"
+
 struct _NMNetns {
 	NMExportedObject parent_instance;
 };

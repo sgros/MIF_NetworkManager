@@ -38,8 +38,23 @@
 #include "nm-platform.h"
 #include "nm-device-factory.h"
 #include "nm-netns.h"
+#include "nm-connectivity.h"
+#include "nm-settings.h"
+#include "nm-setting-connection.h"
+#include "nm-utils.h"
 
 #include "nmdbus-netns.h"
+
+static void
+connection_changed (NMSettings *settings,
+                    NMConnection *connection,
+                    NMNetns *netns);
+
+static void
+retry_connections_for_parent_device (NMNetns *self, NMDevice *device);
+
+static NMDevice *
+find_parent_device_for_connection (NMNetns *self, NMConnection *connection);
 
 G_DEFINE_TYPE (NMNetns, nm_netns, NM_TYPE_EXPORTED_OBJECT)
 
@@ -51,6 +66,15 @@ enum {
 	PROP_DEVICES,
 	PROP_ALL_DEVICES,
 };
+
+enum {
+	DEVICE_ADDED,
+	DEVICE_REMOVED,
+	INTERNAL_DEVICE_ADDED,
+	INTERNAL_DEVICE_REMOVED,
+	LAST_SIGNAL,
+};
+static guint signals[LAST_SIGNAL] = { 0 };
 
 typedef struct {
 
@@ -84,9 +108,30 @@ typedef struct {
 	NMDefaultRouteManager *default_route_manager;
 
 	/*
+	 * Configuration singleton object
+	 */
+	NMConfig *config;
+
+	/*
 	 * Route manager instance for the namespace
 	 */
 	NMRouteManager *route_manager;
+
+	/*
+	 * ???
+	 */
+	NMConnectivity *connectivity;
+
+	/*
+	 * ???
+	 */
+	NMSettings *settings;
+
+	/*
+	 * Hostname in the given network namespace
+	 */
+        char *hostname;
+
 
 } NMNetnsPrivate;
 
@@ -241,28 +286,19 @@ remove_device (NMNetns *self,
 
 	g_signal_handlers_disconnect_matched (device, G_SIGNAL_MATCH_DATA, 0, 0, NULL, NULL, self);
 
-#if 0
 	nm_settings_device_removed (priv->settings, device, quitting);
-#endif
 	priv->devices = g_slist_remove (priv->devices, device);
 
 	if (nm_device_is_real (device)) {
-#if 0
 		g_signal_emit (self, signals[DEVICE_REMOVED], 0, device);
-#endif
-		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
 		nm_device_removed (device);
+		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
 	}
-#if 0
-	g_signal_emit (self, signals[INTERNAL_DEVICE_REMOVED], 0, device);
-#endif
-	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
+	g_signal_emit (self, signals[INTERNAL_DEVICE_REMOVED], 0, device);
 	nm_exported_object_clear_and_unexport (&device);
 
-#if 0
-	check_if_startup_complete (manager);
-#endif
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 }
 
 static void
@@ -285,8 +321,8 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	const char *iface, *type_desc;
-#if 0
 	const GSList *unmanaged_specs;
+#if 0
 	RfKillType rtype;
 #endif
 	GSList *iter, *remove = NULL;
@@ -374,11 +410,11 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	type_desc = nm_device_get_type_desc (device);
 	g_assert (type_desc);
 
-#if 0
 	unmanaged_specs = nm_settings_get_unmanaged_specs (priv->settings);
 	nm_device_set_unmanaged_flags_initial (device,
 					       NM_UNMANAGED_USER,
 					       nm_device_spec_match_list (device, unmanaged_specs));
+#if 0
 	nm_device_set_unmanaged_flags_initial (device,
 					       NM_UNMANAGED_INTERNAL,
 					       manager_sleeping (self));
@@ -395,10 +431,9 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	}
 	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
-#if 0
 	nm_settings_device_added (priv->settings, device);
 	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
-	g_object_notify (G_OBJECT (self), NM_MANAGER_ALL_DEVICES);
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
 	for (iter = priv->devices; iter; iter = iter->next) {
 		NMDevice *d = iter->data;
@@ -411,7 +446,6 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	 * parent device, retry to activate them.
 	 */
 	retry_connections_for_parent_device (self, device);
-#endif
 
 	return TRUE;
 }
@@ -705,8 +739,456 @@ impl_netns_get_all_devices (NMManager *self,
 /******************************************************************/
 
 static void
+system_hostname_changed_cb (NMSettings *settings,
+                            GParamSpec *pspec,
+                            gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	char *hostname;
+
+	hostname = nm_settings_get_hostname (priv->settings);
+
+	/* nm_settings_get_hostname() does not return an empty hostname. */
+	nm_assert (!hostname || *hostname);
+
+	if (!hostname && !priv->hostname)
+		return;
+	if (hostname && priv->hostname && !strcmp (hostname, priv->hostname)) {
+		g_free (hostname);
+		return;
+	}
+
+	/* realloc, to free possibly trailing data after NUL. */
+	if (hostname)
+		hostname = g_realloc (hostname, strlen (hostname) + 1);
+
+	g_free (priv->hostname);
+	priv->hostname = hostname;
+#if 0
+	g_object_notify (G_OBJECT (self), NM_NETNS_HOSTNAME);
+
+        nm_dhcp_manager_set_default_hostname (nm_dhcp_manager_get (), priv->hostname);
+#endif
+}
+
+/**
+ * find_device_by_iface:
+ * @self: the #NMNetns
+ * @iface: the device interface to find
+ * @connection: a connection to ensure the returned device is compatible with
+ * @slave: a slave connection to ensure a master is compatible with
+ *
+ * Finds a device by interface name, preferring realized devices.  If @slave
+ * is given, this function will only return master devices and will ensure
+ * @slave, when activated, can be a slave of the returned master device.  If
+ * @connection is given, this function will only consider devices that are
+ * compatible with @connection.
+ *
+ * Returns: the matching #NMDevice
+ */
+static NMDevice *
+find_device_by_iface (NMNetns *self,
+                      const char *iface,
+                      NMConnection *connection,
+                      NMConnection *slave)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMDevice *fallback = NULL;
+	GSList *iter;
+
+	g_return_val_if_fail (iface != NULL, NULL);
+
+	for (iter = priv->devices; iter; iter = iter->next) {
+		NMDevice *candidate = iter->data;
+
+		if (strcmp (nm_device_get_iface (candidate), iface))
+			continue;
+		if (connection && !nm_device_check_connection_compatible (candidate, connection))
+			continue;
+		if (slave) {
+			if (!nm_device_is_master (candidate))
+				continue;
+			if (!nm_device_check_slave_connection_compatible (candidate, slave))
+				continue;
+		}
+
+		if (nm_device_is_real (candidate))
+			return candidate;
+		else if (!fallback)
+			fallback = candidate;
+	}
+	return fallback;
+}
+
+static NMDevice *
+find_device_by_hw_addr (NMNetns *netns, const char *hwaddr)
+{
+	GSList *iter;
+	const char *device_addr;
+
+	g_return_val_if_fail (hwaddr != NULL, NULL);
+
+	if (nm_utils_hwaddr_valid (hwaddr, -1)) {
+		for (iter = NM_NETNS_GET_PRIVATE (netns)->devices; iter; iter = iter->next) {
+			device_addr = nm_device_get_hw_address (NM_DEVICE (iter->data));
+			if (device_addr && nm_utils_hwaddr_matches (hwaddr, -1, device_addr, -1))
+				return NM_DEVICE (iter->data);
+		}
+	}
+	return NULL;
+}
+
+static NMDevice *
+find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMDeviceFactory *factory; 
+	const char *parent_name = NULL;
+	NMSettingsConnection *parent_connection;
+	NMDevice *parent, *first_compatible = NULL;
+	GSList *iter;
+
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
+
+	factory = nm_device_factory_manager_find_factory_for_connection (connection);
+	if (!factory)
+		return NULL;
+
+	parent_name = nm_device_factory_get_connection_parent (factory, connection);
+	if (!parent_name)
+		return NULL;
+
+	/* Try as an interface name of a parent device */ 
+	parent = find_device_by_iface (self, parent_name, NULL, NULL);
+	if (parent)
+		return parent;
+
+	/* Maybe a hardware address */
+	parent = find_device_by_hw_addr (self, parent_name);
+	if (parent)
+		return parent;
+
+	/* Maybe a connection UUID */
+	parent_connection = nm_settings_get_connection_by_uuid (priv->settings, parent_name);
+	if (!parent_connection)
+		return NULL;
+
+	/* Check if the parent connection is currently activated or is comaptible
+	 * with some known device.
+	 */ 
+	for (iter = priv->devices; iter; iter = iter->next) {
+		NMDevice *candidate = iter->data;
+
+		if (nm_device_get_settings_connection (candidate) == parent_connection)
+			return candidate;
+
+		if (   !first_compatible
+		    && nm_device_check_connection_compatible (candidate, NM_CONNECTION (parent_connection)))
+			first_compatible = candidate;
+	}
+
+	return first_compatible;
+}
+
+/**
+ * get_virtual_iface_name:
+ * @self: the #NMNetns
+ * @connection: the #NMConnection representing a virtual interface
+ * @out_parent: on success, the parent device if any
+ * @error: an error if determining the virtual interface name failed
+ *
+ * Given @connection, returns the interface name that the connection
+ * would represent if it is a virtual connection.  %NULL is returned and
+ * @error is set if the connection is not virtual, or if the name could
+ * not be determined.
+ *
+ * Returns: the expected interface name (caller takes ownership), or %NULL
+ */
+static char *
+get_virtual_iface_name (NMNetns *self,
+                        NMConnection *connection,
+                        NMDevice **out_parent,
+                        GError **error)
+{
+	NMDeviceFactory *factory;
+	char *iface = NULL;
+	NMDevice *parent = NULL;
+
+	if (out_parent)
+		*out_parent = NULL;
+
+	factory = nm_device_factory_manager_find_factory_for_connection (connection);
+	if (!factory) {
+		g_set_error (error,
+		             NM_MANAGER_ERROR,
+		             NM_MANAGER_ERROR_FAILED,
+		             "NetworkManager plugin for '%s' unavailable",
+		             nm_connection_get_connection_type (connection));
+		return NULL;
+	}
+
+	parent = find_parent_device_for_connection (self, connection);
+	iface = nm_device_factory_get_virtual_iface_name (factory,
+	                                                  connection,
+	                                                  parent ? nm_device_get_ip_iface (parent) : NULL,
+	                                                  error);
+	if (!iface)
+		return NULL;
+
+	if (out_parent)
+		*out_parent = parent;
+
+	return iface;
+}
+
+/**
+ * system_create_virtual_device:
+ * @self: the #NMNetns
+ * @connection: the connection which might require a virtual device
+ *
+ * If @connection requires a virtual device and one does not yet exist for it,
+ * creates that device.
+ *
+ * Returns: A #NMDevice that was just realized; %NULL if none
+ */
+static NMDevice *
+system_create_virtual_device (NMNetns *self, NMConnection *connection)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMDeviceFactory *factory;
+	gs_free_slist GSList *connections = NULL;
+	GSList *iter;
+	gs_free char *iface = NULL;
+	NMDevice *device = NULL, *parent = NULL;
+	GError *error = NULL;
+
+	g_return_val_if_fail (NM_IS_NETNS (self), NULL);
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
+
+	iface = get_virtual_iface_name (self, connection, &parent, &error);
+	if (!iface) {
+		nm_log_warn (LOGD_NETNS, "(%s) can't get a name of a virtual device: %s",
+		             nm_connection_get_id (connection), error->message);
+		g_error_free (error);
+		return NULL;
+	}
+
+	/* See if there's a device that is already compatible with this connection */
+	for (iter = priv->devices; iter; iter = g_slist_next (iter)) {
+		NMDevice *candidate = iter->data;
+
+		if (   g_strcmp0 (nm_device_get_iface (candidate), iface) == 0
+		    && nm_device_check_connection_compatible (candidate, connection)) {
+
+			if (nm_device_is_real (candidate)) {
+				nm_log_dbg (LOGD_DEVICE, "(%s) already created virtual interface name %s",
+				            nm_connection_get_id (connection), iface);
+				return NULL;
+			}
+
+			device = candidate;
+			break;
+		}
+	}
+
+	if (!device) {
+		/* No matching device found. Proceed creating a new one. */
+
+		factory = nm_device_factory_manager_find_factory_for_connection (connection);
+		if (!factory) {
+			nm_log_err (LOGD_DEVICE, "(%s:%s) NetworkManager plugin for '%s' unavailable",
+			            nm_connection_get_id (connection), iface,
+			            nm_connection_get_connection_type (connection));
+			return NULL;
+		}
+
+		device = nm_device_factory_create_device (factory, iface, NULL, connection, self, NULL, &error);
+		if (!device) {
+			nm_log_warn (LOGD_DEVICE, "(%s) factory can't create the device: %s",
+			             nm_connection_get_id (connection), error->message);
+			g_error_free (error);
+			return NULL;
+		}
+
+		if (!add_device (self, device, &error)) {
+			nm_log_warn (LOGD_DEVICE, "(%s) can't register the device with manager: %s",
+			             nm_connection_get_id (connection), error->message);
+			g_error_free (error);
+			g_object_unref (device);
+			return NULL;
+		}
+
+		/* Add device takes a reference that NMManager still owns, so it's
+		 * safe to unref here and still return @device.
+		 */
+		g_object_unref (device);
+	}
+
+	/* Create backing resources if the device has any autoconnect connections */
+	connections = nm_settings_get_connections (priv->settings);
+	for (iter = connections; iter; iter = g_slist_next (iter)) {
+		NMConnection *candidate = iter->data;
+		NMSettingConnection *s_con;
+
+		if (!nm_device_check_connection_compatible (device, candidate))
+			continue;
+
+		s_con = nm_connection_get_setting_connection (candidate);
+		g_assert (s_con);
+		if (!nm_setting_connection_get_autoconnect (s_con))
+			continue;
+
+		/* Create any backing resources the device needs */
+		if (!nm_device_create_and_realize (device, connection, parent, &error)) {
+			nm_log_warn (LOGD_DEVICE, "(%s) couldn't create the device: %s",
+			             nm_connection_get_id (connection), error->message);
+			g_error_free (error);
+			remove_device (self, device, FALSE, TRUE);
+			return NULL;
+		}
+		break;
+	}
+
+	return device;
+}
+
+static void
+retry_connections_for_parent_device (NMNetns *self, NMDevice *device)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GSList *connections, *iter;
+
+	g_return_if_fail (device);
+
+	connections = nm_settings_get_connections (priv->settings);
+	for (iter = connections; iter; iter = g_slist_next (iter)) {
+		NMConnection *candidate = iter->data;
+		NMDevice *parent;
+
+		parent = find_parent_device_for_connection (self, candidate);
+		if (parent == device)
+			connection_changed (priv->settings, candidate, self);
+	}
+
+	g_slist_free (connections);
+}
+
+static void
+connection_changed (NMSettings *settings,
+                    NMConnection *connection,
+                    NMNetns *netns)
+{
+	NMDevice *device;
+
+	if (!nm_connection_is_virtual (connection))
+		return;
+
+	device = system_create_virtual_device (netns, connection);
+	if (!device)
+		return;
+
+	/* Maybe the device that was created was needed by some other
+	 * connection's device (parent of a VLAN). Let the connections
+	 * can use the newly created device as a parent know. */
+	retry_connections_for_parent_device (netns, device);
+}
+
+static void
+connection_removed (NMSettings *settings,
+                    NMSettingsConnection *connection,
+                    NMNetns *netns)
+{
+	/*
+	 * Do not delete existing virtual devices to keep connectivity up.
+	 * Virtual devices are reused when NetworkManager is restarted.
+	 */
+}
+
+static void
+system_unmanaged_devices_changed_cb (NMSettings *settings,
+                                     GParamSpec *pspec,
+                                     gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	const GSList *unmanaged_specs, *iter;
+
+	unmanaged_specs = nm_settings_get_unmanaged_specs (priv->settings);
+	for (iter = priv->devices; iter; iter = g_slist_next (iter))
+		nm_device_set_unmanaged_flags_by_device_spec (NM_DEVICE (iter->data), unmanaged_specs);
+}
+
+static void
+_config_changed_cb (NMConfig *config, NMConfigData *config_data, NMConfigChangeFlags changes, NMConfigData *old_data, NMNetns *self)
+{
+	g_object_set (NM_NETNS_GET_PRIVATE (self)->connectivity,
+	              NM_CONNECTIVITY_URI, nm_config_data_get_connectivity_uri (config_data),
+	              NM_CONNECTIVITY_INTERVAL, nm_config_data_get_connectivity_interval (config_data),
+	              NM_CONNECTIVITY_RESPONSE, nm_config_data_get_connectivity_response (config_data),
+	              NULL);
+
+#if 0
+	if (NM_FLAGS_HAS (changes, NM_CONFIG_CHANGE_GLOBAL_DNS_CONFIG))
+		g_object_notify (G_OBJECT (self), NM_MANAGER_GLOBAL_DNS_CONFIGURATION);
+#endif
+}
+
+#if 0
+static void
+connectivity_changed (NMConnectivity *connectivity,
+                      GParamSpec *pspec,
+                      gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+
+	nm_log_dbg (LOGD_NETNS, "connectivity checking indicates %s",
+	            nm_connectivity_state_to_string (nm_connectivity_get_state (connectivity)));
+
+	nm_netns_update_state (self);
+	g_object_notify (G_OBJECT (self), NM_MANAGER_CONNECTIVITY);
+}
+#endif
+
+/******************************************************************/
+
+static void
 nm_netns_init (NMNetns *self)
 {
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMConfigData *config_data;
+
+#if 0
+	/*
+	 * TODO/BUG: What is this for?
+	 */
+	_set_prop_filter (self, nm_bus_manager_get_connection (priv->dbus_mgr));
+#endif
+
+	priv->settings = nm_settings_new ();
+	g_signal_connect (priv->settings, "notify::" NM_SETTINGS_HOSTNAME,
+	                  G_CALLBACK (system_hostname_changed_cb), self);
+	g_signal_connect (priv->settings, NM_SETTINGS_SIGNAL_CONNECTION_ADDED,
+	                  G_CALLBACK (connection_changed), self);
+	g_signal_connect (priv->settings, NM_SETTINGS_SIGNAL_CONNECTION_UPDATED_BY_USER,
+	                  G_CALLBACK (connection_changed), self);
+	g_signal_connect (priv->settings, NM_SETTINGS_SIGNAL_CONNECTION_REMOVED,
+	                  G_CALLBACK (connection_removed), self);
+
+	priv->config = g_object_ref (nm_config_get ());
+	g_signal_connect (G_OBJECT (priv->config),
+	                  NM_CONFIG_SIGNAL_CONFIG_CHANGED,
+	                  G_CALLBACK (_config_changed_cb),
+	                  self);
+
+	config_data = nm_config_get_data (priv->config);
+#if 0
+	priv->connectivity = nm_connectivity_new (nm_config_data_get_connectivity_uri (config_data),
+	                                          nm_config_data_get_connectivity_interval (config_data),
+	                                          nm_config_data_get_connectivity_response (config_data));
+	g_signal_connect (priv->connectivity, "notify::" NM_CONNECTIVITY_STATE,
+	                  G_CALLBACK (connectivity_changed), self);
+#endif
 }
 
 static gboolean
@@ -755,6 +1237,37 @@ set_property (GObject *object, guint prop_id,
 }
 
 static void
+finalize (GObject *object)
+{
+	NMNetns *netns = NM_NETNS (object);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (netns);
+
+	if (priv->config) {
+		g_signal_handlers_disconnect_by_func (priv->config, _config_changed_cb, netns);
+		g_clear_object (&priv->config);
+	}
+
+#if 0
+	if (priv->connectivity) {
+		g_signal_handlers_disconnect_by_func (priv->connectivity, connectivity_changed, netns);
+		g_clear_object (&priv->connectivity);
+	}
+#endif
+
+	g_free (priv->hostname);
+
+	if (priv->settings) {
+		g_signal_handlers_disconnect_by_func (priv->settings, system_unmanaged_devices_changed_cb, netns);
+		g_signal_handlers_disconnect_by_func (priv->settings, system_hostname_changed_cb, netns);
+		g_signal_handlers_disconnect_by_func (priv->settings, connection_changed, netns);
+		g_signal_handlers_disconnect_by_func (priv->settings, connection_removed, netns);
+		g_clear_object (&priv->settings);
+	}
+
+        G_OBJECT_CLASS (nm_netns_parent_class)->finalize (object);
+}
+
+static void
 nm_netns_class_init (NMNetnsClass *klass)
 {
 	GObjectClass *object_class = G_OBJECT_CLASS (klass);
@@ -767,6 +1280,7 @@ nm_netns_class_init (NMNetnsClass *klass)
         /* virtual methods */
 	object_class->set_property = set_property;
 	object_class->get_property = get_property;
+	object_class->finalize = finalize;
 
 	/* Network namespace's name */
 	g_object_class_install_property
@@ -792,12 +1306,39 @@ nm_netns_class_init (NMNetnsClass *klass)
 				     G_PARAM_READABLE |
 				     G_PARAM_STATIC_STRINGS));
 
+	/* Signals */
+        signals[DEVICE_ADDED] =
+                g_signal_new (NM_NETNS_DEVICE_ADDED,
+                              G_OBJECT_CLASS_TYPE (object_class),
+                              G_SIGNAL_RUN_FIRST,
+                              0, NULL, NULL, NULL,
+                              G_TYPE_NONE, 1, NM_TYPE_DEVICE);
+
+        signals[DEVICE_REMOVED] =
+                g_signal_new (NM_NETNS_DEVICE_REMOVED,
+                              G_OBJECT_CLASS_TYPE (object_class),
+                              G_SIGNAL_RUN_FIRST,
+                              0, NULL, NULL, NULL,
+                              G_TYPE_NONE, 1, NM_TYPE_DEVICE);
+
+        signals[INTERNAL_DEVICE_ADDED] =
+                g_signal_new (NM_NETNS_INTERNAL_DEVICE_ADDED,
+                              G_OBJECT_CLASS_TYPE (object_class),
+                              G_SIGNAL_RUN_FIRST,
+                              0, NULL, NULL, NULL,
+                              G_TYPE_NONE, 1, NM_TYPE_DEVICE);
+
+        signals[INTERNAL_DEVICE_REMOVED] =
+                g_signal_new (NM_NETNS_INTERNAL_DEVICE_REMOVED,
+                              G_OBJECT_CLASS_TYPE (object_class),
+                              G_SIGNAL_RUN_FIRST,
+                              0, NULL, NULL, NULL,
+                              G_TYPE_NONE, 1, NM_TYPE_DEVICE);
+
 	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
 						NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,
 						"GetDevices", impl_netns_get_devices,
 						"GetAllDevices", impl_netns_get_all_devices,
 						NULL);
-
-
 }
 
