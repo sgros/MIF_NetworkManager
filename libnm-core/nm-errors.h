@@ -330,6 +330,7 @@ GQuark nm_vpn_plugin_error_quark    (void);
  */
 typedef enum {
 	NM_NETNS_ERROR_FAILED = 0,                  /*< nick=Failed >*/
+	NM_NETNS_ERROR_NOT_FOUND,                   /*< nick=NotFound >*/
 	NM_NETNS_ERROR_PERMISSION_DENIED,           /*< nick=PermissionDenied >*/
 	NM_NETNS_ERROR_UNKNOWN_DEVICE,              /*< nick=UnknownDevice >*/
 } NMNetnsError;

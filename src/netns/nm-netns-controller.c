@@ -81,7 +81,26 @@ NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
 
 /******************************************************************/
 
-void nm_netns_controller_activate_root_netns(void)
+static const char *
+find_netns_key_by_name(NMNetnsController *self, const char *netnsname)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	GHashTableIter iter;
+	gpointer key, value;
+
+        g_hash_table_iter_init (&iter, priv->network_namespaces);
+        while (g_hash_table_iter_next (&iter, &key, &value))
+		if (!strcmp(netnsname, nm_netns_get_name(value)))
+			return key;
+
+	return NULL;
+}
+
+
+/******************************************************************/
+
+void
+nm_netns_controller_activate_root_netns(void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -99,7 +118,8 @@ void nm_netns_controller_activate_root_netns(void)
 	g_object_ref(priv->root_ns);
 }
 
-void nm_netns_controller_activate_netns(NMNetns *netns)
+void
+nm_netns_controller_activate_netns(NMNetns *netns)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -120,7 +140,7 @@ void nm_netns_controller_activate_netns(NMNetns *netns)
 /******************************************************************/
 
 NMNetns *
-nm_netns_controller_get_root_netns(void)
+nm_netns_controller_get_root_netns (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -128,7 +148,7 @@ nm_netns_controller_get_root_netns(void)
 }
 
 NMNetns *
-nm_netns_controller_get_active_netns(void)
+nm_netns_controller_get_active_netns (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -136,7 +156,7 @@ nm_netns_controller_get_active_netns(void)
 }
 
 NMPlatform *
-nm_netns_controller_get_active_platform(void)
+nm_netns_controller_get_active_platform (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -144,7 +164,7 @@ nm_netns_controller_get_active_platform(void)
 }
 
 NMPlatform *
-nm_netns_controller_get_root_platform(NMNetnsController *self)
+nm_netns_controller_get_root_platform (NMNetnsController *self)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
@@ -152,7 +172,7 @@ nm_netns_controller_get_root_platform(NMNetnsController *self)
 }
 
 NMDefaultRouteManager *
-nm_netns_controller_get_default_route_manager(void)
+nm_netns_controller_get_default_route_manager (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -160,7 +180,7 @@ nm_netns_controller_get_default_route_manager(void)
 }
 
 NMRouteManager *
-nm_netns_controller_get_route_manager(void)
+nm_netns_controller_get_route_manager (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
@@ -170,8 +190,8 @@ nm_netns_controller_get_route_manager(void)
 /******************************************************************/
 
 static NMNetns *
-create_new_namespace(NMNetnsController *self, const char *netnsname,
-		gboolean isroot)
+create_new_namespace (NMNetnsController *self, const char *netnsname,
+                      gboolean isroot)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 	NMNetns *netns;
@@ -228,7 +248,7 @@ create_new_namespace(NMNetnsController *self, const char *netnsname,
 
 static void
 impl_netns_controller_list_namespaces (NMNetnsController *self,
-		GDBusMethodInvocation *context)
+                                       GDBusMethodInvocation *context)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 	GPtrArray *network_namespaces;
@@ -248,8 +268,8 @@ impl_netns_controller_list_namespaces (NMNetnsController *self,
 
 static void
 impl_netns_controller_add_namespace (NMNetnsController *self,
-			GDBusMethodInvocation *context,
-			const char *netnsname)
+                                     GDBusMethodInvocation *context,
+                                     const char *netnsname)
 {
 	NMNetns *netns;
 
@@ -262,6 +282,51 @@ impl_netns_controller_add_namespace (NMNetnsController *self,
 						       NM_NETNS_ERROR,
 						       NM_NETNS_ERROR_FAILED,
 						       "Error creating network namespace");
+}
+
+static void
+impl_netns_controller_remove_namespace (NMNetnsController *self,
+                                        GDBusMethodInvocation *context,
+                                        const char *netnsname)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	NMNetns *netns;
+	const char *path;
+
+	path = find_netns_key_by_name(self, netnsname);
+
+	nm_log_dbg (LOGD_NETNS, "Removing network namespace %s (path %s)",
+		    netnsname, path);
+
+	if (path == NULL) {
+
+		nm_log_err (LOGD_NETNS, "Network namespace %s not found", netnsname);
+		g_dbus_method_invocation_return_error (context,
+						       NM_NETNS_ERROR,
+						       NM_NETNS_ERROR_NOT_FOUND,
+						       "Network name space not found");
+		return;
+	}
+
+	netns = g_hash_table_lookup(priv->network_namespaces, path);
+
+	if (netns == priv->root_ns) {
+
+		nm_log_err (LOGD_NETNS, "Root namespace %s can not be removed", netnsname);
+		g_dbus_method_invocation_return_error (context,
+						       NM_NETNS_ERROR,
+						       NM_NETNS_ERROR_PERMISSION_DENIED,
+						       "Root network namespace can not be removed");
+		return;
+	}
+
+	nm_netns_stop(netns);
+
+	g_hash_table_remove(priv->network_namespaces, path);
+
+	g_dbus_method_invocation_return_value (context,
+					       g_variant_new ("(s)",
+					       "Success"));
 }
 
 /**
@@ -292,7 +357,7 @@ nm_netns_controller_setup (void)
 }
 
 NMNetnsController *
-nm_netns_controller_get(void)
+nm_netns_controller_get (void)
 {
 	return singleton_instance;
 }
@@ -442,6 +507,7 @@ nm_netns_controller_class_init (NMNetnsControllerClass *klass)
 						NMDBUS_TYPE_NETWORK_NAMESPACES_CONTROLLER_SKELETON,
 						"ListNetworkNamespaces", impl_netns_controller_list_namespaces,
 						"AddNetworkNamespace", impl_netns_controller_add_namespace,
+						"RemoveNetworkNamespace", impl_netns_controller_remove_namespace,
 						NULL);
 }
 

@@ -29,7 +29,23 @@
       </arg>
       <arg name="network_namespace" type="o" direction="out">
         <tp:docstring>
-          The path of the network namepsace object created.
+          The path of the network namespace object created.
+        </tp:docstring>
+      </arg>
+    </method>
+
+    <method name="RemoveNetworkNamespace">
+      <tp:docstring>
+        Remove given network namespace.
+      </tp:docstring>
+      <arg name="networknamespacename" type="s" direction="in">
+        <tp:docstring>
+          Name of the new network namespace.
+        </tp:docstring>
+      </arg>
+      <arg name="status" type="s" direction="out">
+        <tp:docstring>
+          In case of success, string "Success" is returned.
         </tp:docstring>
       </arg>
     </method>
