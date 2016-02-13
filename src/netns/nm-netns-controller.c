@@ -47,6 +47,7 @@ enum {
 
 enum {
 	NETNS_ADDED,
+	NETNS_REMOVED,
 	LAST_SIGNAL,
 };
 static guint signals[LAST_SIGNAL] = { 0 };
@@ -320,9 +321,17 @@ impl_netns_controller_remove_namespace (NMNetnsController *self,
 		return;
 	}
 
+	/* Emit removal D-Bus signal */
+	g_signal_emit (self, signals[NETNS_REMOVED], 0, netns);
+
+	/* Stop network namespace */
 	nm_netns_stop(netns);
 
+	/* Remove network namespace from a list */
 	g_hash_table_remove(priv->network_namespaces, path);
+
+	/* Signal change in property */
+	g_object_notify (G_OBJECT (self), NM_NETNS_CONTROLLER_NETWORK_NAMESPACES);
 
 	g_dbus_method_invocation_return_value (context,
 					       g_variant_new ("(s)",
@@ -496,6 +505,13 @@ nm_netns_controller_class_init (NMNetnsControllerClass *klass)
 	/* Signals */
 	signals[NETNS_ADDED] =
 		g_signal_new (NM_NETNS_CONTROLLER_NETNS_ADDED,
+		              G_OBJECT_CLASS_TYPE (object_class),
+		              G_SIGNAL_RUN_FIRST,
+		              0, NULL, NULL, NULL,
+		              G_TYPE_NONE, 1, NM_TYPE_NETNS);
+
+	signals[NETNS_REMOVED] =
+		g_signal_new (NM_NETNS_CONTROLLER_NETNS_REMOVED,
 		              G_OBJECT_CLASS_TYPE (object_class),
 		              G_SIGNAL_RUN_FIRST,
 		              0, NULL, NULL, NULL,

@@ -53,6 +53,7 @@ typedef struct {
 
 /* Signals */
 #define NM_NETNS_CONTROLLER_NETNS_ADDED			"network-namespace-added"
+#define NM_NETNS_CONTROLLER_NETNS_REMOVED		"network-namespace-removed"
 
 GType nm_netns_controller_get_type (void);
 

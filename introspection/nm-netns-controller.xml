@@ -67,6 +67,17 @@
       </arg>
     </signal>
 
+    <signal name="NetworkNamespaceRemoved">
+      <tp:docstring>
+        A network namespace was removed from the system
+      </tp:docstring>
+      <arg name="netns_path" type="o">
+        <tp:docstring>
+          The object path of network namespace that is going to be removed.
+        </tp:docstring>
+      </arg>
+    </signal>
+
   </interface>
 </node>
 
