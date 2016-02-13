@@ -21,21 +21,21 @@
 
 #include "config.h"
 
+#include "nm-default.h"
+#include "nm-ip6-config.h"
+
 #include <string.h>
 #include <arpa/inet.h>
 
 #include <ndp.h>
 
-#include "nm-default.h"
-#include "nm-ip6-config.h"
-
+#include "nm-macros-internal.h"
 #include "nm-utils.h"
 #include "nm-platform.h"
+#include "nm-netns-controller.h"
 #include "nm-route-manager.h"
 #include "nm-core-internal.h"
 #include "NetworkManagerUtils.h"
-#include "nm-macros-internal.h"
-#include "nm-netns-controller.h"
 
 #include "nmdbus-ip6-config.h"
 

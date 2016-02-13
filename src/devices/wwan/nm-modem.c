@@ -21,9 +21,11 @@
 
 #include "config.h"
 
+#include "nm-default.h"
+#include "nm-modem.h"
+
 #include <string.h>
 
-#include "nm-modem.h"
 #include "nm-core-internal.h"
 #include "nm-platform.h"
 #include "nm-setting-connection.h"

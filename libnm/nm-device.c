@@ -22,12 +22,13 @@
 #include "config.h"
 
 #include <string.h>
-// TODO: Remove this, only for debugging using printfs
-#include <stdio.h>
-
-#include <gudev/gudev.h>
 
 #include "nm-default.h"
+#include "nm-device.h"
+
+#include <string.h>
+#include <gudev/gudev.h>
+
 #include "nm-dbus-interface.h"
 #include "nm-active-connection.h"
 #include "nm-device-ethernet.h"
@@ -46,7 +47,6 @@
 #include "nm-device-generic.h"
 #include "nm-device-ip-tunnel.h"
 #include "nm-device-macvlan.h"
-#include "nm-device.h"
 #include "nm-device-private.h"
 #include "nm-dhcp4-config.h"
 #include "nm-dhcp6-config.h"
@@ -60,7 +60,6 @@
 #include "nm-dbus-helpers.h"
 #include "nm-device-tun.h"
 #include "nm-setting-connection.h"
-#include "nm-macros-internal.h"
 
 #include "nmdbus-device.h"
 
