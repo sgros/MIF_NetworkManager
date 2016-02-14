@@ -7636,6 +7636,42 @@ impl_device_get_pvds (NMDevice *self, GDBusMethodInvocation *context)
 					g_variant_new ("(^ao)", (char **) paths));
 }
 
+static void
+impl_device_move_to_network_namespace (NMDevice *self,
+                                       GDBusMethodInvocation *context,
+                                       const char *netns_path)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+	NMNetns *netns;
+
+	netns = nm_netns_controller_find_netns_by_path(netns_path);
+
+	if (netns) {
+
+		if (netns != priv->netns) {
+
+			nm_netns_remove_device(priv->netns, self);
+			nm_netns_add_device(netns, self);
+
+			g_object_unref(priv->netns);
+			priv->netns = netns;
+			g_object_ref(netns);
+
+			g_object_notify (G_OBJECT (self), NM_DEVICE_NETNS);
+
+		} else
+			g_dbus_method_invocation_return_error (context,
+			                                       NM_MANAGER_ERROR,
+			                                       NM_DEVICE_ERROR_DEVICE_ALREADY_IN_NETNS,
+			                                       "Device already in target namespace.");
+	} else
+		g_dbus_method_invocation_return_error (context,
+		                                       NM_MANAGER_ERROR,
+		                                       NM_DEVICE_ERROR_TARGET_NETNS_NOT_FOUND,
+		                                       "Target namespace wasn't found.");
+
+}
+
 static gboolean
 _device_activate (NMDevice *self, NMActRequest *req)
 {
@@ -11805,5 +11841,6 @@ nm_device_class_init (NMDeviceClass *klass)
 	                                        "Disconnect", impl_device_disconnect,
 	                                        "Delete", impl_device_delete,
 	                                        "GetProvisioningDomains", impl_device_get_pvds,
+	                                        "MoveToNetworkNamespace", impl_device_move_to_network_namespace,
 	                                        NULL);
 }

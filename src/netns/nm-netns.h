@@ -95,6 +95,9 @@ NMRouteManager *nm_netns_get_route_manager(NMNetns *self);
 void nm_netns_set_platform(NMNetns *self, NMPlatform *platform);
 NMPlatform * nm_netns_get_platform(NMNetns *self);
 
+void nm_netns_remove_device(NMNetns *self, NMDevice *device);
+void nm_netns_add_device(NMNetns *self, NMDevice *device);
+
 NMNetns *nm_netns_new(const char *netns_name);
 
 gboolean nm_netns_setup(NMNetns *netns, gboolean isroot);

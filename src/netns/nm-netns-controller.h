@@ -69,6 +69,8 @@ void nm_netns_controller_activate_netns(NMNetns *netns);
 NMNetns * nm_netns_controller_get_active_netns(void);
 NMNetns * nm_netns_controller_get_root_netns(void);
 
+NMNetns * nm_netns_controller_find_netns_by_path(const char *netns_path);
+
 NMPlatform * nm_netns_controller_get_active_platform(void);
 NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);
 

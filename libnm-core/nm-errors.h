@@ -158,6 +158,8 @@ typedef enum {
 	NM_DEVICE_ERROR_NOT_SOFTWARE,              /*< nick=NotSoftware >*/
 	NM_DEVICE_ERROR_NOT_ALLOWED,               /*< nick=NotAllowed >*/
 	NM_DEVICE_ERROR_SPECIFIC_OBJECT_NOT_FOUND, /*< nick=SpecificObjectNotFound >*/
+	NM_DEVICE_ERROR_TARGET_NETNS_NOT_FOUND,    /*< nick=TargetNetnsNotFound >*/
+	NM_DEVICE_ERROR_DEVICE_ALREADY_IN_NETNS,   /*< nick=DeviceAlreadyInTargetNetns >*/
 } NMDeviceError;
 
 #define NM_DEVICE_ERROR nm_device_error_quark ()

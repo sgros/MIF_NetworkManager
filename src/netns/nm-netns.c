@@ -230,6 +230,61 @@ nm_netns_get_route_manager(NMNetns *self)
 	return priv->route_manager;
 }
 
+void
+nm_netns_remove_device(NMNetns *self, NMDevice *device)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	priv->devices = g_slist_remove (priv->devices, device);
+
+	if (nm_device_is_real (device)) {
+		g_signal_emit (self, signals[DEVICE_REMOVED], 0, device);
+		nm_device_removed (device);
+		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
+	}
+
+	g_signal_emit (self, signals[INTERNAL_DEVICE_REMOVED], 0, device);
+	nm_exported_object_clear_and_unexport (&device);
+
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
+}
+
+void
+nm_netns_add_device(NMNetns *self, NMDevice *device)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GError *error;
+	int ifindex;
+	GSList *iter;
+
+	/* No duplicates */
+	ifindex = nm_device_get_ifindex (device);
+	if (ifindex > 0 && nm_netns_get_device_by_ifindex (self, ifindex)) {
+		g_set_error (&error, NM_NETNS_ERROR, NM_NETNS_ERROR_FAILED,
+			     "A device with ifindex %d already exits", ifindex);
+		return;
+	}
+
+	priv->devices = g_slist_append (priv->devices, g_object_ref (device));
+
+	if (nm_device_is_real (device)) {
+		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
+		nm_device_removed (device);
+	}
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
+
+	nm_settings_device_added (priv->settings, device);
+	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
+	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
+
+	for (iter = priv->devices; iter; iter = iter->next) {
+		NMDevice *d = iter->data;
+
+		if (d != device)
+			nm_device_notify_new_device_added (d, device);
+	}
+}
+
 /**************************************************************/
 
 NMDevice *
