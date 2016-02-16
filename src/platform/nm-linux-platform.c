@@ -2664,15 +2664,23 @@ netns_create(NMPlatform *platform, const char *name, gboolean isroot)
 	strncat(filename, name, PATHMAX);
 
 	/*
-	 * First, we have to check if the given name already
-	 * exists.
+	 * Create target directory first. Note that all subdirectories,
+	 * except the last one, must already exist!
 	 */
+	if (mkdir (NETNS_PATH, 0) == -1) {
+		if (errno != EEXIST) {
+			nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'",
+			            filename, strerror(errno));
+			return -1;
+		}
+	}
 
 	/*
 	 * Create a node in /var/run/netns 
 	 */
 	if ((netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
-		nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'", filename, strerror(errno));
+		nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'",
+		            filename, strerror(errno));
 		return -1;
 	}
 

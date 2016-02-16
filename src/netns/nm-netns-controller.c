@@ -160,15 +160,8 @@ NMNetns *
 nm_netns_controller_find_netns_by_path(const char *netns_path)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-	GHashTableIter iter;
-	gpointer key, value;
 
-        g_hash_table_iter_init (&iter, priv->network_namespaces);
-        while (g_hash_table_iter_next (&iter, &key, &value))
-		if (!strcmp(netns_path, key))
-			return value;
-
-	return NULL;
+	return g_hash_table_lookup (priv->network_namespaces, netns_path);
 }
 
 NMPlatform *

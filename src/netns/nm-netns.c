@@ -79,6 +79,12 @@ static guint signals[LAST_SIGNAL] = { 0 };
 typedef struct {
 
 	/*
+	 * Is this root network namespace? For root network namespace
+	 * behavior is special.
+	 */
+	gboolean isroot;
+
+	/*
 	 * file descriptor of file in directory /var/run/netns/
 	 * where network namespace is mounted. It is necessary
 	 * to have it because setns() system call needs it as a
@@ -191,11 +197,11 @@ nm_netns_set_platform(NMNetns *self, NMPlatform *platform)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
-	/*
-	 * TODO/BUG: Where is unref?!?!?
-	 */
-	g_object_ref(platform);
+	if (priv->platform)
+		g_object_unref(priv->platform);
+
 	priv->platform = platform;
+	g_object_ref(priv->platform);
 }
 
 NMPlatform *
@@ -204,12 +210,12 @@ nm_netns_get_platform(NMNetns *self)
 	NMNetnsPrivate *priv;
 
 	if (self == NULL)
-		return NULL;
+		return NM_PLATFORM_GET;
 
 	priv = NM_NETNS_GET_PRIVATE (self);
 
-	if (priv == NULL)
-		return NULL;
+	if (priv == NULL || priv->platform == NULL)
+		return NM_PLATFORM_GET;
 
 	return priv->platform;
 }
@@ -677,8 +683,6 @@ platform_link_cb (NMPlatform *platform,
 {
 	PlatformLinkCbData *data;
 
-	
-
 	switch (change_type) {
 	case NM_PLATFORM_SIGNAL_ADDED:
 	case NM_PLATFORM_SIGNAL_REMOVED:
@@ -698,29 +702,40 @@ nm_netns_setup(NMNetns *self, gboolean isroot)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
-	g_signal_connect (priv->platform,
-			  NM_PLATFORM_SIGNAL_LINK_CHANGED,
-			  G_CALLBACK (platform_link_cb),
-			  self);
-
-	priv->default_route_manager = nm_default_route_manager_new();
-	priv->route_manager = nm_route_manager_new();
-
 	/*
 	 * For root network namespace NMManager enumerates devices
 	 * and loopback interface is activated in main function.
 	 * For all other network namespaces we have to do it by our
 	 * selves!
+	 *
+	 * Also, monitoring of network devices in root network
+	 * namespace will be done by NMManager, so we don't do
+	 * anything about it.
 	 */
-	if (!isroot) {
-		/*
-		 * Enumerate all existing devices in the network namespace
-		 */
-		platform_query_devices (self);
 
-		/* Activate loopback interface in a new network namespace */
-		nm_platform_link_set_up (priv->platform, 1, NULL);
-	}
+	priv->default_route_manager = nm_default_route_manager_new();
+	priv->route_manager = nm_route_manager_new();
+
+	priv->isroot = isroot;
+
+	if (isroot)
+		return TRUE;
+
+	g_signal_connect (priv->platform,
+			  NM_PLATFORM_SIGNAL_LINK_CHANGED,
+			  G_CALLBACK (platform_link_cb),
+			  self);
+
+	/*
+	 * Enumerate all existing devices in the network namespace
+	 *
+	 * This isn't done for root namespace because NMManager object
+	 * takes care of that part.
+	 */
+	platform_query_devices (self);
+
+	/* Activate loopback interface in a new network namespace */
+	nm_platform_link_set_up (priv->platform, 1, NULL);
 
 	return TRUE;
 }
@@ -729,6 +744,9 @@ void
 nm_netns_stop(NMNetns *self)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	if (priv->isroot)
+		return;
 
 	while (priv->devices)
 		remove_device (self, NM_DEVICE (priv->devices->data), TRUE, TRUE);
