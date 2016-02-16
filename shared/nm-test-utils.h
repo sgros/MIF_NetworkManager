@@ -158,6 +158,12 @@ _nmtst_assert_success (gboolean success, GError *error, const char *file, int li
 }
 #define nmtst_assert_success(success, error) _nmtst_assert_success ((success), (error), __FILE__, __LINE__)
 
+#define nmtst_assert_no_success(success, error) \
+	G_STMT_START { \
+		g_assert (error); \
+		g_assert (!(success)); \
+	} G_STMT_END
+
 /*******************************************************************************/
 
 struct __nmtst_internal
@@ -1038,14 +1044,6 @@ _nmtst_assert_ip6_address (const char *file, int line, const struct in6_addr *ad
 }
 #define nmtst_assert_ip6_address(addr, str_expected) _nmtst_assert_ip6_address (__FILE__, __LINE__, addr, str_expected)
 
-/* Deprecated: don't use this overly verbose macro. */
-#define ASSERT(x, test_name, fmt, ...) \
-    G_STMT_START { \
-        if (!(x)) { \
-            g_error ("%s:%d: FAIL[%s]: " fmt, __FILE__, __LINE__, test_name, ## __VA_ARGS__); \
-        } \
-    } G_STMT_END
-
 #define nmtst_spawn_sync(working_directory, standard_out, standard_err, assert_exit_status, ...) \
 	__nmtst_spawn_sync (working_directory, standard_out, standard_err, assert_exit_status, ##__VA_ARGS__, NULL)
 inline static gint
@@ -1378,6 +1376,18 @@ nmtst_setting_ip_config_add_route (NMSettingIPConfig *s_ip,
 #if (defined(__NM_SIMPLE_CONNECTION_H__) && defined(__NM_SETTING_CONNECTION_H__)) || (defined(NM_CONNECTION_H))
 
 inline static NMConnection *
+nmtst_clone_connection (NMConnection *connection)
+{
+	g_assert (NM_IS_CONNECTION (connection));
+
+#if defined(__NM_SIMPLE_CONNECTION_H__)
+	return nm_simple_connection_new_clone (connection);
+#else
+	return nm_connection_duplicate (connection);
+#endif
+}
+
+inline static NMConnection *
 nmtst_create_minimal_connection (const char *id, const char *uuid, const char *type, NMSettingConnection **out_s_con)
 {
 	NMConnection *con;
@@ -1481,13 +1491,7 @@ _nmtst_connection_duplicate_and_normalize (NMConnection *connection, ...)
 	gboolean was_modified;
 	va_list args;
 
-	g_assert (NM_IS_CONNECTION (connection));
-
-#if defined(__NM_SIMPLE_CONNECTION_H__)
-	connection = nm_simple_connection_new_clone (connection);
-#else
-	connection = nm_connection_duplicate (connection);
-#endif
+	connection = nmtst_clone_connection (connection);
 
 	va_start (args, connection);
 	was_modified = _nmtst_connection_normalize_v (connection, args);
@@ -1558,28 +1562,33 @@ nmtst_assert_connection_equals (NMConnection *a, gboolean normalize_a, NMConnect
 }
 
 inline static void
+nmtst_assert_connection_verifies (NMConnection *con)
+{
+	/* assert that the connection does verify, it might be normaliziable or not */
+	GError *error = NULL;
+	gboolean success;
+
+	g_assert (NM_IS_CONNECTION (con));
+
+	success = nm_connection_verify (con, &error);
+	g_assert_no_error (error);
+	g_assert (success);
+}
+
+inline static void
 nmtst_assert_connection_verifies_without_normalization (NMConnection *con)
 {
 	/* assert that the connection verifies and does not need any normalization */
-
 	GError *error = NULL;
 	gboolean success;
 	gboolean was_modified = FALSE;
 	gs_unref_object NMConnection *clone = NULL;
 
-	g_assert (NM_IS_CONNECTION (con));
+	clone = nmtst_clone_connection (con);
 
-#if defined(__NM_SIMPLE_CONNECTION_H__)
-	clone = nm_simple_connection_new_clone (con);
-#else
-	clone = nm_connection_duplicate (con);
-#endif
+	nmtst_assert_connection_verifies (con);
 
-	success = nm_connection_verify (con, &error);
-	g_assert_no_error (error);
-	g_assert (success);
-
-	success = nm_connection_normalize (con, NULL, &was_modified, &error);
+	success = nm_connection_normalize (clone, NULL, &was_modified, &error);
 	g_assert_no_error (error);
 	g_assert (success);
 	nmtst_assert_connection_equals (con, FALSE, clone, FALSE);
@@ -1593,21 +1602,19 @@ nmtst_assert_connection_verifies_and_normalizable (NMConnection *con)
 	GError *error = NULL;
 	gboolean success;
 	gboolean was_modified = FALSE;
+	gs_unref_object NMConnection *clone = NULL;
 
-	g_assert (NM_IS_CONNECTION (con));
+	clone = nmtst_clone_connection (con);
 
-	success = nm_connection_verify (con, &error);
-	g_assert_no_error (error);
-	g_assert (success);
-	g_clear_error (&error);
+	nmtst_assert_connection_verifies (con);
 
-	success = nm_connection_normalize (con, NULL, &was_modified, &error);
+	success = nm_connection_normalize (clone, NULL, &was_modified, &error);
 	g_assert_no_error (error);
 	g_assert (success);
 	g_assert (was_modified);
 
 	/* again! */
-	nmtst_assert_connection_verifies_without_normalization (con);
+	nmtst_assert_connection_verifies_without_normalization (clone);
 }
 
 inline static void
@@ -1619,21 +1626,22 @@ nmtst_assert_connection_verifies_after_normalization (NMConnection *con,
 	GError *error = NULL;
 	gboolean success;
 	gboolean was_modified = FALSE;
+	gs_unref_object NMConnection *clone = NULL;
 
-	g_assert (NM_IS_CONNECTION (con));
+	clone = nmtst_clone_connection (con);
 
 	success = nm_connection_verify (con, &error);
 	nmtst_assert_error (error, expect_error_domain, expect_error_code, NULL);
 	g_assert (!success);
 	g_clear_error (&error);
 
-	success = nm_connection_normalize (con, NULL, &was_modified, &error);
+	success = nm_connection_normalize (clone, NULL, &was_modified, &error);
 	g_assert_no_error (error);
 	g_assert (success);
 	g_assert (was_modified);
 
 	/* again! */
-	nmtst_assert_connection_verifies_without_normalization (con);
+	nmtst_assert_connection_verifies_without_normalization (clone);
 }
 
 inline static void
@@ -1646,18 +1654,20 @@ nmtst_assert_connection_unnormalizable (NMConnection *con,
 	GError *error = NULL;
 	gboolean success;
 	gboolean was_modified = FALSE;
+	gs_unref_object NMConnection *clone = NULL;
 
-	g_assert (NM_IS_CONNECTION (con));
+	clone = nmtst_clone_connection (con);
 
 	success = nm_connection_verify (con, &error);
 	nmtst_assert_error (error, expect_error_domain, expect_error_code, NULL);
 	g_assert (!success);
 	g_clear_error (&error);
 
-	success = nm_connection_normalize (con, NULL, &was_modified, &error);
+	success = nm_connection_normalize (clone, NULL, &was_modified, &error);
 	nmtst_assert_error (error, expect_error_domain, expect_error_code, NULL);
 	g_assert (!success);
 	g_assert (!was_modified);
+	nmtst_assert_connection_equals (con, FALSE, clone, FALSE);
 	g_clear_error (&error);
 }
 

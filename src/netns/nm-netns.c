@@ -317,9 +317,9 @@ remove_device (NMNetns *self,
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 
 	nm_log_dbg (LOGD_NETNS, "(%s): removing device (allow_unmanage %d, managed %d)",
-		    nm_device_get_iface (device), allow_unmanage, nm_device_get_managed (device));
+		    nm_device_get_iface (device), allow_unmanage, nm_device_get_managed (device, FALSE));
 
-	if (allow_unmanage && nm_device_get_managed (device)) {
+	if (allow_unmanage && nm_device_get_managed (device, FALSE)) {
 		NMActRequest *req = nm_device_get_act_request (device);
 		gboolean unmanage = FALSE;
 
@@ -337,9 +337,9 @@ remove_device (NMNetns *self,
 
 		if (unmanage) {
 			if (quitting)
-				nm_device_set_unmanaged_quitting (device);
+				nm_device_set_unmanaged_by_quitting (device);
 			else
-				nm_device_set_unmanaged_flags (device, NM_UNMANAGED_INTERNAL, TRUE, NM_DEVICE_STATE_REASON_REMOVED);
+				nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_PLATFORM_INIT, TRUE, NM_DEVICE_STATE_REASON_REMOVED);
 		} else if (quitting && nm_config_get_configure_and_quit (nm_config_get ())) {
 			nm_device_spawn_iface_helper (device);
 		}
@@ -382,8 +382,8 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	const char *iface, *type_desc;
-	const GSList *unmanaged_specs;
 #if 0
+	const GSList *unmanaged_specs;
 	RfKillType rtype;
 #endif
 	GSList *iter, *remove = NULL;
@@ -471,26 +471,16 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	type_desc = nm_device_get_type_desc (device);
 	g_assert (type_desc);
 
-	unmanaged_specs = nm_settings_get_unmanaged_specs (priv->settings);
-	nm_device_set_unmanaged_flags_initial (device,
-					       NM_UNMANAGED_USER,
-					       nm_device_spec_match_list (device, unmanaged_specs));
+	nm_device_set_unmanaged_by_user_config (device, nm_settings_get_unmanaged_specs (priv->settings));
+
 #if 0
-	nm_device_set_unmanaged_flags_initial (device,
-					       NM_UNMANAGED_INTERNAL,
-					       manager_sleeping (self));
+	nm_device_set_unmanaged_flags (device,
+	                               NM_UNMANAGED_SLEEPING,
+	                               manager_sleeping (self));
 #endif
 
 	dbus_path = nm_exported_object_export (NM_EXPORTED_OBJECT (device));
 	nm_log_info (LOGD_NETNS, "netns (%s): new %s device (%s)", iface, type_desc, dbus_path);
-
-	nm_device_finish_init (device);
-
-	if (nm_device_is_real (device)) {
-		g_object_notify (G_OBJECT (self), NM_NETNS_DEVICES);
-		nm_device_removed (device);
-	}
-	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
 	nm_settings_device_added (priv->settings, device);
 	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
@@ -1189,7 +1179,7 @@ system_unmanaged_devices_changed_cb (NMSettings *settings,
 
 	unmanaged_specs = nm_settings_get_unmanaged_specs (priv->settings);
 	for (iter = priv->devices; iter; iter = g_slist_next (iter))
-		nm_device_set_unmanaged_flags_by_device_spec (NM_DEVICE (iter->data), unmanaged_specs);
+		nm_device_set_unmanaged_by_user_config (NM_DEVICE (iter->data), unmanaged_specs);
 }
 
 static void
