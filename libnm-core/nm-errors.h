@@ -142,6 +142,7 @@ GQuark nm_crypto_error_quark (void);
  * @NM_DEVICE_ERROR_SPECIFIC_OBJECT_NOT_FOUND: the "specific object" in the
  *   activation request (eg, the #NMAccessPoint or #NMWimaxNsp) was not
  *   found.
+ * @NM_DEVICE_ERROR_VERSION_ID_MISMATCH: the version id did not match.
  *
  * Device-related errors.
  *
@@ -160,6 +161,7 @@ typedef enum {
 	NM_DEVICE_ERROR_SPECIFIC_OBJECT_NOT_FOUND, /*< nick=SpecificObjectNotFound >*/
 	NM_DEVICE_ERROR_TARGET_NETNS_NOT_FOUND,    /*< nick=TargetNetnsNotFound >*/
 	NM_DEVICE_ERROR_DEVICE_ALREADY_IN_NETNS,   /*< nick=DeviceAlreadyInTargetNetns >*/
+	NM_DEVICE_ERROR_VERSION_ID_MISMATCH,       /*< nick=VersionIdMismatch >*/
 } NMDeviceError;
 
 #define NM_DEVICE_ERROR nm_device_error_quark ()

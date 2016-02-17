@@ -955,7 +955,7 @@ find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
 }
 
 /**
- * get_virtual_iface_name:
+ * nm_netns_get_connection_iface:
  * @self: the #NMNetns
  * @connection: the #NMConnection representing a virtual interface
  * @out_parent: on success, the parent device if any
@@ -968,11 +968,11 @@ find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
  *
  * Returns: the expected interface name (caller takes ownership), or %NULL
  */
-static char *
-get_virtual_iface_name (NMNetns *self,
-                        NMConnection *connection,
-                        NMDevice **out_parent,
-                        GError **error)
+char *
+nm_netns_get_connection_iface (NMNetns *self,
+                               NMConnection *connection,
+                               NMDevice **out_parent,
+                               GError **error)
 {
 	NMDeviceFactory *factory;
 	char *iface = NULL;
@@ -991,11 +991,25 @@ get_virtual_iface_name (NMNetns *self,
 		return NULL;
 	}
 
+	if (   !out_parent
+	    && !NM_DEVICE_FACTORY_GET_INTERFACE (factory)->get_connection_iface) {
+		/* optimization. Shortcut lookup of the partent device. */
+		iface = g_strdup (nm_connection_get_interface_name (connection));
+		if (!iface) {
+			g_set_error (error,
+			             NM_NETNS_ERROR,
+			             NM_NETNS_ERROR_FAILED,
+			             "failed to determine interface name: error determine name for %s",
+			             nm_connection_get_connection_type (connection));
+		}
+		return iface;
+        }
+
 	parent = find_parent_device_for_connection (self, connection);
-	iface = nm_device_factory_get_virtual_iface_name (factory,
-	                                                  connection,
-	                                                  parent ? nm_device_get_ip_iface (parent) : NULL,
-	                                                  error);
+	iface = nm_device_factory_get_connection_iface (factory,
+	                                                connection,
+	                                                parent ? nm_device_get_ip_iface (parent) : NULL,
+	                                                error);
 	if (!iface)
 		return NULL;
 
@@ -1029,7 +1043,7 @@ system_create_virtual_device (NMNetns *self, NMConnection *connection)
 	g_return_val_if_fail (NM_IS_NETNS (self), NULL);
 	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
 
-	iface = get_virtual_iface_name (self, connection, &parent, &error);
+	iface = nm_netns_get_connection_iface (self, connection, &parent, &error);
 	if (!iface) {
 		nm_log_warn (LOGD_NETNS, "(%s) can't get a name of a virtual device: %s",
 		             nm_connection_get_id (connection), error->message);

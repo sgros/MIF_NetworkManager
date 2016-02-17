@@ -80,6 +80,8 @@ const char *nm_netns_export(NMNetns *self);
 
 NMDevice *nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex);
 
+char *nm_netns_get_connection_iface (NMNetns *self, NMConnection *connection, NMDevice **out_parent, GError **error);
+
 void nm_netns_set_name(NMNetns *netns, const char *name);
 const char *nm_netns_get_name(NMNetns *netns);
 

@@ -2165,7 +2165,8 @@ nm_platform_link_veth_get_properties (NMPlatform *self, int ifindex, int *out_pe
 gboolean
 nm_platform_link_tun_get_properties_ifname (NMPlatform *self, const char *ifname, NMPlatformTunProperties *props)
 {
-	char *path, *val;
+	char path[256];
+	char *val;
 	gboolean success = TRUE;
 
 	_CHECK_SELF (self, klass, FALSE);
@@ -2178,11 +2179,9 @@ nm_platform_link_tun_get_properties_ifname (NMPlatform *self, const char *ifname
 
 	if (!ifname || !nm_utils_iface_valid_name (ifname))
 		return FALSE;
-	ifname = ASSERT_VALID_PATH_COMPONENT (ifname);
 
-	path = g_strdup_printf ("/sys/class/net/%s/owner", ifname);
+	nm_sprintf_buf (path, "/sys/class/net/%s/owner", ifname);
 	val = nm_platform_sysctl_get (self, path);
-	g_free (path);
 	if (val) {
 		props->owner = _nm_utils_ascii_str_to_int64 (val, 10, -1, G_MAXINT64, -1);
 		if (errno)
@@ -2191,9 +2190,8 @@ nm_platform_link_tun_get_properties_ifname (NMPlatform *self, const char *ifname
 	} else
 		success = FALSE;
 
-	path = g_strdup_printf ("/sys/class/net/%s/group", ifname);
+	nm_sprintf_buf (path, "/sys/class/net/%s/group", ifname);
 	val = nm_platform_sysctl_get (self, path);
-	g_free (path);
 	if (val) {
 		props->group = _nm_utils_ascii_str_to_int64 (val, 10, -1, G_MAXINT64, -1);
 		if (errno)
@@ -2202,9 +2200,8 @@ nm_platform_link_tun_get_properties_ifname (NMPlatform *self, const char *ifname
 	} else
 		success = FALSE;
 
-	path = g_strdup_printf ("/sys/class/net/%s/tun_flags", ifname);
+	nm_sprintf_buf (path, "/sys/class/net/%s/tun_flags", ifname);
 	val = nm_platform_sysctl_get (self, path);
-	g_free (path);
 	if (val) {
 		gint64 flags;
 
@@ -3024,21 +3021,6 @@ nm_platform_link_to_string (const NMPlatformLink *link, char *buf, gsize len)
 	else
 		parent[0] = 0;
 
-	if (link->inet6_addr_gen_mode_inv) {
-		switch (_nm_platform_uint8_inv (link->inet6_addr_gen_mode_inv)) {
-			case 0:
-				g_snprintf (str_addrmode, sizeof (str_addrmode), " addrgenmode eui64");
-				break;
-			case 1:
-				g_snprintf (str_addrmode, sizeof (str_addrmode), " addrgenmode none");
-				break;
-			default:
-				g_snprintf (str_addrmode, sizeof (str_addrmode), " addrgenmode %d", _nm_platform_uint8_inv (link->inet6_addr_gen_mode_inv));
-				break;
-		}
-	} else
-		str_addrmode[0] = '\0';
-
 	if (link->addr.len)
 		str_addr = nm_utils_hwaddr_ntoa (link->addr.data, MIN (link->addr.len, sizeof (link->addr.data)));
 	if (link->inet6_token.is_valid)
@@ -3057,7 +3039,7 @@ nm_platform_link_to_string (const NMPlatformLink *link, char *buf, gsize len)
 	            " %s" /* link->type */
 	            "%s%s" /* kind */
 	            "%s" /* is-in-udev */
-	            "%s" /* addr-gen-mode */
+	            "%s%s" /* addr-gen-mode */
 	            "%s%s" /* addr */
 	            "%s%s" /* inet6_token */
 	            "%s%s" /* driver */
@@ -3072,7 +3054,8 @@ nm_platform_link_to_string (const NMPlatformLink *link, char *buf, gsize len)
 	            link->kind ? (g_strcmp0 (str_link_type, link->kind) ? "/" : "*") : "?",
 	            link->kind && g_strcmp0 (str_link_type, link->kind) ? link->kind : "",
 	            link->initialized ? " init" : " not-init",
-	            str_addrmode,
+	            link->inet6_addr_gen_mode_inv ? " addrgenmode " : "",
+	            link->inet6_addr_gen_mode_inv ? nm_platform_link_inet6_addrgenmode2str (_nm_platform_uint8_inv (link->inet6_addr_gen_mode_inv), str_addrmode, sizeof (str_addrmode)) : "",
 	            str_addr ? " addr " : "",
 	            str_addr ? str_addr : "",
 	            str_inet6_token ? " inet6token " : "",
@@ -3461,6 +3444,7 @@ NM_UTILS_ENUM2STR_DEFINE (nm_platform_link_inet6_addrgenmode2str, guint8,
 	NM_UTILS_ENUM2STR (NM_IN6_ADDR_GEN_MODE_NONE, "none"),
 	NM_UTILS_ENUM2STR (NM_IN6_ADDR_GEN_MODE_EUI64, "eui64"),
 	NM_UTILS_ENUM2STR (NM_IN6_ADDR_GEN_MODE_STABLE_PRIVACY, "stable-privacy"),
+	NM_UTILS_ENUM2STR (NM_IN6_ADDR_GEN_MODE_RANDOM, "random"),
 );
 
 NM_UTILS_FLAGS2STR_DEFINE (nm_platform_addr_flags2str, unsigned,
