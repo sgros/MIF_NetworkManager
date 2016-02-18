@@ -38,6 +38,7 @@
 #include "nm-platform.h"
 #include "nm-device-factory.h"
 #include "nm-netns.h"
+#include "nm-netns-controller.h"
 #include "nm-connectivity.h"
 #include "nm-settings.h"
 #include "nm-setting-connection.h"
@@ -799,6 +800,71 @@ impl_netns_get_all_devices (NMManager *self,
 	_get_devices (self, context, TRUE);
 }
 
+static NMDevice *
+find_device_by_path(NMNetns *self, const char *device_path)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GSList *iter;
+
+	for (iter = priv->devices; iter; iter = iter->next) {
+		const char *path;
+
+		path = nm_exported_object_get_path (NM_EXPORTED_OBJECT (iter->data));
+
+		if (!strcmp(path, device_path))
+			return iter->data;
+        }
+
+	return NULL;
+}
+
+static void
+impl_netns_move_device_to_network_namespace (NMNetns *self,
+                                             GDBusMethodInvocation *context,
+                                             const char *device_path,
+                                             const char *netns_path)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMNetns *target;
+	NMDevice *device;
+
+	device = find_device_by_path(self, device_path);
+
+	if (!device) {
+		g_dbus_method_invocation_return_error (context,
+		                                       NM_NETNS_ERROR,
+		                                       NM_NETNS_ERROR_UNKNOWN_DEVICE,
+		                                       "Target namespace wasn't found.");
+		return;
+	}
+
+	target = nm_netns_controller_find_netns_by_path(netns_path);
+
+	if (!target) {
+		g_dbus_method_invocation_return_error (context,
+		                                       NM_NETNS_ERROR,
+		                                       NM_NETNS_ERROR_TARGET_NETNS_NOT_FOUND,
+		                                       "Target namespace wasn't found.");
+		return;
+	}
+
+	if (target == self) {
+		g_dbus_method_invocation_return_error (context,
+		                                       NM_NETNS_ERROR,
+		                                       NM_NETNS_ERROR_DEVICE_ALREADY_IN_NETNS,
+		                                       "Device already in target namespace.");
+		return;
+	}
+
+	if (!nm_platform_link_set_netns(priv->platform, nm_device_get_ifindex(device), nm_netns_get_id(target)))
+		g_dbus_method_invocation_return_error (context,
+		                                       NM_NETNS_ERROR,
+		                                       NM_NETNS_ERROR_FAILED,
+		                                       "Error moving device to target namespace");
+	else
+		g_dbus_method_invocation_return_value (context, NULL);
+}
+
 /******************************************************************/
 
 static void
@@ -1416,6 +1482,7 @@ nm_netns_class_init (NMNetnsClass *klass)
 						NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,
 						"GetDevices", impl_netns_get_devices,
 						"GetAllDevices", impl_netns_get_all_devices,
+						"MoveDeviceToNetworkNamespace", impl_netns_move_device_to_network_namespace,
 						NULL);
 }
 

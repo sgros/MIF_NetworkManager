@@ -278,17 +278,6 @@
       </arg>
     </method>
 
-    <method name="ChangeNetworkNamespace">
-      <tp:docstring>
-        Change network namespace of device.
-      </tp:docstring>
-      <arg name="network_namespace" type="o" direction="in">
-        <tp:docstring>
-          Network namespace to which device should be moved to.
-        </tp:docstring>
-      </arg>
-    </method>
-
     <signal name="StateChanged">
       <arg name="new_state" type="u" tp:type="NM_DEVICE_STATE">
         <tp:docstring>

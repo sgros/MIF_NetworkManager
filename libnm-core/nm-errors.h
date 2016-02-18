@@ -159,8 +159,6 @@ typedef enum {
 	NM_DEVICE_ERROR_NOT_SOFTWARE,              /*< nick=NotSoftware >*/
 	NM_DEVICE_ERROR_NOT_ALLOWED,               /*< nick=NotAllowed >*/
 	NM_DEVICE_ERROR_SPECIFIC_OBJECT_NOT_FOUND, /*< nick=SpecificObjectNotFound >*/
-	NM_DEVICE_ERROR_TARGET_NETNS_NOT_FOUND,    /*< nick=TargetNetnsNotFound >*/
-	NM_DEVICE_ERROR_DEVICE_ALREADY_IN_NETNS,   /*< nick=DeviceAlreadyInTargetNetns >*/
 	NM_DEVICE_ERROR_VERSION_ID_MISMATCH,       /*< nick=VersionIdMismatch >*/
 } NMDeviceError;
 
@@ -337,6 +335,8 @@ typedef enum {
 	NM_NETNS_ERROR_NOT_FOUND,                   /*< nick=NotFound >*/
 	NM_NETNS_ERROR_PERMISSION_DENIED,           /*< nick=PermissionDenied >*/
 	NM_NETNS_ERROR_UNKNOWN_DEVICE,              /*< nick=UnknownDevice >*/
+	NM_NETNS_ERROR_TARGET_NETNS_NOT_FOUND,      /*< nick=TargetNetnsNotFound >*/
+	NM_NETNS_ERROR_DEVICE_ALREADY_IN_NETNS,     /*< nick=DeviceAlreadyInTargetNetns >*/
 } NMNetnsError;
 
 #define NM_NETNS_ERROR (nm_netns_error_quark ())
