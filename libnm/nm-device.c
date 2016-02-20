@@ -21,9 +21,8 @@
 
 #include "config.h"
 
-#include <string.h>
-
 #include "nm-default.h"
+
 #include "nm-device.h"
 
 #include <string.h>

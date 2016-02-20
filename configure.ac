@@ -595,7 +595,7 @@ AC_ARG_WITH(crypto, AS_HELP_STRING([--with-crypto=nss|gnutls], [Cryptography lib
 with_nss=no
 with_gnutls=no
 if test x"$ac_crypto" = xnss; then
-  PKG_CHECK_MODULES(NSS, [nss >= 3.11])
+  PKG_CHECK_MODULES(NSS, [nss])
 
   # Work around a pkg-config bug (fdo #29801) where exists != usable
   FOO=`$PKG_CONFIG --cflags --libs nss`

@@ -18,17 +18,17 @@
  * Copyright (C) 2014 Red Hat, Inc.
  */
 
-#include "config.h"
+#include "nm-default.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <string.h>
-
 #include <gmodule.h>
 
 #include "nm-device-factory.h"
 #include "nm-default.h"
 #include "nm-netns.h"
+#include "nm-platform.h"
 #include "nm-utils.h"
 
 const NMLinkType _nm_device_factory_no_default_links[] = { NM_LINK_TYPE_NONE };

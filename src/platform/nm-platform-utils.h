@@ -21,8 +21,6 @@
 #ifndef __NM_PLATFORM_UTILS_H__
 #define __NM_PLATFORM_UTILS_H__
 
-#include "config.h"
-
 #include <gudev/gudev.h>
 
 #include "nm-platform.h"
@@ -68,5 +66,7 @@ gboolean nmp_utils_lifetime_get (guint32 timestamp,
                                  guint32 *out_preferred);
 
 gboolean nmp_utils_device_exists (const char *name);
+
+gboolean nmp_utils_ip4_address_is_link_local (in_addr_t addr);
 
 #endif /* __NM_PLATFORM_UTILS_H__ */

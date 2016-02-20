@@ -17,7 +17,7 @@
  *
  * Copyright (C) 2012-2015 Red Hat, Inc.
  */
-#include "config.h"
+#include "nm-default.h"
 
 #include <errno.h>
 #include <unistd.h>
@@ -52,7 +52,6 @@
 #include "nm-platform-utils.h"
 #include "NetworkManagerUtils.h"
 #include "nm-utils.h"
-#include "nm-default.h"
 #include "wifi/wifi-utils.h"
 #include "wifi/wifi-utils-wext.h"
 #include "nmp-object.h"
@@ -296,17 +295,6 @@ _support_user_ipv6ll_detect (struct nlattr **tb)
 /******************************************************************
  * Various utilities
  ******************************************************************/
-
-const NMIPAddr nm_ip_addr_zero = NMIPAddrInit;
-
-#define IPV4LL_NETWORK (htonl (0xA9FE0000L))
-#define IPV4LL_NETMASK (htonl (0xFFFF0000L))
-
-static gboolean
-ip4_address_is_link_local (in_addr_t addr)
-{
-	return (addr & IPV4LL_NETMASK) == IPV4LL_NETWORK;
-}
 
 static guint
 _nm_ip_config_source_to_rtprot (NMIPConfigSource source)
@@ -5334,7 +5322,7 @@ ip4_address_add (NMPlatform *platform,
 	                             plen,
 	                             &peer_addr,
 	                             0,
-	                             ip4_address_is_link_local (addr) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE,
+	                             nmp_utils_ip4_address_is_link_local (addr) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE,
 	                             lifetime,
 	                             preferred,
 	                             label);
