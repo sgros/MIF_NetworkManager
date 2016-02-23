@@ -367,8 +367,8 @@ nm_netns_controller_setup (void)
         nm_singleton_instance_register ();
 
         nm_log_dbg (LOGD_NETNS, "setup %s singleton (%p, %s)",
-			"NMNetnsController", singleton_instance,
-			G_OBJECT_TYPE_NAME (singleton_instance));
+	                        "NMNetnsController", singleton_instance,
+	                        G_OBJECT_TYPE_NAME (singleton_instance));
 
 	return create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE) ? TRUE : FALSE;
 }

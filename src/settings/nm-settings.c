@@ -159,6 +159,10 @@ typedef struct {
 
 #define NM_SETTINGS_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_SETTINGS, NMSettingsPrivate))
 
+NM_DEFINE_SINGLETON_INSTANCE (NMSettings);
+
+NM_DEFINE_SINGLETON_REGISTER (NMSettings);
+
 enum {
 	CONNECTION_ADDED,
 	CONNECTION_UPDATED,
@@ -2135,6 +2139,11 @@ nm_settings_new (void)
 	NMSettings *self;
 	NMSettingsPrivate *priv;
 
+	if (singleton_instance) {
+		nm_log_err (LOGD_SETTINGS, "error creating new NMSettings object, has already initialized singleton object");
+		return NULL;
+	}
+
 	self = g_object_new (NM_TYPE_SETTINGS, NULL);
 
 	priv = NM_SETTINGS_GET_PRIVATE (self);
@@ -2146,23 +2155,32 @@ nm_settings_new (void)
 }
 
 gboolean
-nm_settings_start (NMSettings *self, GError **error)
+nm_settings_setup (GError **error)
 {
 	NMSettingsPrivate *priv;
 	GDBusProxy *proxy;
 	GVariant *variant;
 	GError *local_error = NULL;
 
-	priv = NM_SETTINGS_GET_PRIVATE (self);
-
-	/* Load the plugins; fail if a plugin is not found. */
-	if (!load_plugins (self, nm_config_get_plugins (priv->config), error)) {
-		g_object_unref (self);
+	if (singleton_instance) {
+		nm_log_err (LOGD_SETTINGS, "error starting NMSettings object, has already initialized instance");
 		return FALSE;
 	}
 
-	load_connections (self);
-	check_startup_complete (self);
+	singleton_instance = nm_settings_new();
+
+	nm_singleton_instance_register ();
+
+	priv = NM_SETTINGS_GET_PRIVATE (singleton_instance);
+
+	/* Load the plugins; fail if a plugin is not found. */
+	if (!load_plugins (singleton_instance, nm_config_get_plugins (priv->config), error)) {
+		g_object_unref (singleton_instance);
+		return FALSE;
+	}
+
+	load_connections (singleton_instance);
+	check_startup_complete (singleton_instance);
 
 	proxy = g_dbus_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM, 0, NULL,
 	                                       HOSTNAMED_SERVICE_NAME, HOSTNAMED_SERVICE_PATH,
@@ -2173,8 +2191,8 @@ nm_settings_start (NMSettings *self, GError **error)
 			nm_log_info (LOGD_SETTINGS, "hostname: using hostnamed");
 			priv->hostname.hostnamed_proxy = proxy;
 			g_signal_connect (proxy, "g-properties-changed",
-			                  G_CALLBACK (hostnamed_properties_changed), self);
-			hostnamed_properties_changed (proxy, NULL, NULL, self);
+			                  G_CALLBACK (hostnamed_properties_changed), singleton_instance);
+			hostnamed_properties_changed (proxy, NULL, NULL, singleton_instance);
 			g_variant_unref (variant);
 		} else {
 			nm_log_info (LOGD_SETTINGS, "hostname: couldn't get property from hostnamed");
@@ -2187,11 +2205,22 @@ nm_settings_start (NMSettings *self, GError **error)
 	}
 
 	if (!priv->hostname.hostnamed_proxy)
-		setup_hostname_file_monitors (self);
+		setup_hostname_file_monitors (singleton_instance);
 
 	priv->started = TRUE;
-	g_object_notify (G_OBJECT (self), NM_SETTINGS_HOSTNAME);
+	g_object_notify (G_OBJECT (singleton_instance), NM_SETTINGS_HOSTNAME);
+
+	nm_log_dbg (LOGD_SETTINGS, "setup %s singleton (%p, %s)",
+	                           "NMSettings", singleton_instance,
+	                           G_OBJECT_TYPE_NAME (singleton_instance));
+
 	return TRUE;
+}
+
+NMSettings *
+nm_settings_get(void)
+{
+	return singleton_instance;
 }
 
 static void

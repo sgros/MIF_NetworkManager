@@ -130,11 +130,6 @@ typedef struct {
 	NMConnectivity *connectivity;
 
 	/*
-	 * ???
-	 */
-	NMSettings *settings;
-
-	/*
 	 * Hostname in the given network namespace
 	 */
         char *hostname;
@@ -280,7 +275,7 @@ nm_netns_add_device(NMNetns *self, NMDevice *device)
 	}
 	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
-	nm_settings_device_added (priv->settings, device);
+	nm_settings_device_added (nm_settings_get(), device);
 	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
 	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
@@ -348,7 +343,7 @@ remove_device (NMNetns *self,
 
 	g_signal_handlers_disconnect_matched (device, G_SIGNAL_MATCH_DATA, 0, 0, NULL, NULL, self);
 
-	nm_settings_device_removed (priv->settings, device, quitting);
+	nm_settings_device_removed (nm_settings_get(), device, quitting);
 	priv->devices = g_slist_remove (priv->devices, device);
 
 	if (nm_device_is_real (device)) {
@@ -472,7 +467,7 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	type_desc = nm_device_get_type_desc (device);
 	g_assert (type_desc);
 
-	nm_device_set_unmanaged_by_user_config (device, nm_settings_get_unmanaged_specs (priv->settings));
+	nm_device_set_unmanaged_by_user_config (device, nm_settings_get_unmanaged_specs (nm_settings_get()));
 
 #if 0
 	nm_device_set_unmanaged_flags (device,
@@ -483,7 +478,7 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	dbus_path = nm_exported_object_export (NM_EXPORTED_OBJECT (device));
 	nm_log_info (LOGD_NETNS, "netns (%s): new %s device (%s)", iface, type_desc, dbus_path);
 
-	nm_settings_device_added (priv->settings, device);
+	nm_settings_device_added (nm_settings_get(), device);
 	g_signal_emit (self, signals[INTERNAL_DEVICE_ADDED], 0, device);
 	g_object_notify (G_OBJECT (self), NM_NETNS_ALL_DEVICES);
 
@@ -867,6 +862,7 @@ impl_netns_move_device_to_network_namespace (NMNetns *self,
 
 /******************************************************************/
 
+#if 0
 static void
 system_hostname_changed_cb (NMSettings *settings,
                             GParamSpec *pspec,
@@ -876,7 +872,7 @@ system_hostname_changed_cb (NMSettings *settings,
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	char *hostname;
 
-	hostname = nm_settings_get_hostname (priv->settings);
+	hostname = nm_settings_get_hostname (nm_settings_get());
 
 	/* nm_settings_get_hostname() does not return an empty hostname. */
 	nm_assert (!hostname || *hostname);
@@ -894,12 +890,12 @@ system_hostname_changed_cb (NMSettings *settings,
 
 	g_free (priv->hostname);
 	priv->hostname = hostname;
-#if 0
+
 	g_object_notify (G_OBJECT (self), NM_NETNS_HOSTNAME);
 
         nm_dhcp_manager_set_default_hostname (nm_dhcp_manager_get (), priv->hostname);
-#endif
 }
+#endif
 
 /**
  * find_device_by_iface:
@@ -999,7 +995,7 @@ find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
 		return parent;
 
 	/* Maybe a connection UUID */
-	parent_connection = nm_settings_get_connection_by_uuid (priv->settings, parent_name);
+	parent_connection = nm_settings_get_connection_by_uuid (nm_settings_get(), parent_name);
 	if (!parent_connection)
 		return NULL;
 
@@ -1169,7 +1165,7 @@ system_create_virtual_device (NMNetns *self, NMConnection *connection)
 	}
 
 	/* Create backing resources if the device has any autoconnect connections */
-	connections = nm_settings_get_connections (priv->settings);
+	connections = nm_settings_get_connections (nm_settings_get());
 	for (iter = connections; iter; iter = g_slist_next (iter)) {
 		NMConnection *candidate = iter->data;
 		NMSettingConnection *s_con;
@@ -1199,19 +1195,18 @@ system_create_virtual_device (NMNetns *self, NMConnection *connection)
 static void
 retry_connections_for_parent_device (NMNetns *self, NMDevice *device)
 {
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	GSList *connections, *iter;
 
 	g_return_if_fail (device);
 
-	connections = nm_settings_get_connections (priv->settings);
+	connections = nm_settings_get_connections (nm_settings_get());
 	for (iter = connections; iter; iter = g_slist_next (iter)) {
 		NMConnection *candidate = iter->data;
 		NMDevice *parent;
 
 		parent = find_parent_device_for_connection (self, candidate);
 		if (parent == device)
-			connection_changed (priv->settings, candidate, self);
+			connection_changed (nm_settings_get(), candidate, self);
 	}
 
 	g_slist_free (connections);
@@ -1237,6 +1232,7 @@ connection_changed (NMSettings *settings,
 	retry_connections_for_parent_device (netns, device);
 }
 
+#if 0
 static void
 connection_removed (NMSettings *settings,
                     NMSettingsConnection *connection,
@@ -1257,10 +1253,11 @@ system_unmanaged_devices_changed_cb (NMSettings *settings,
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
 	const GSList *unmanaged_specs, *iter;
 
-	unmanaged_specs = nm_settings_get_unmanaged_specs (priv->settings);
+	unmanaged_specs = nm_settings_get_unmanaged_specs (nm_settings_get());
 	for (iter = priv->devices; iter; iter = g_slist_next (iter))
 		nm_device_set_unmanaged_by_user_config (NM_DEVICE (iter->data), unmanaged_specs);
 }
+#endif
 
 static void
 _config_changed_cb (NMConfig *config, NMConfigData *config_data, NMConfigChangeFlags changes, NMConfigData *old_data, NMNetns *self)
@@ -1306,9 +1303,8 @@ nm_netns_init (NMNetns *self)
 	 * TODO/BUG: What is this for?
 	 */
 	_set_prop_filter (self, nm_bus_manager_get_connection (priv->dbus_mgr));
-#endif
 
-	priv->settings = nm_settings_new ();
+	priv->settings = nm_settings_get ();
 	g_signal_connect (priv->settings, "notify::" NM_SETTINGS_HOSTNAME,
 	                  G_CALLBACK (system_hostname_changed_cb), self);
 	g_signal_connect (priv->settings, NM_SETTINGS_SIGNAL_CONNECTION_ADDED,
@@ -1317,6 +1313,7 @@ nm_netns_init (NMNetns *self)
 	                  G_CALLBACK (connection_changed), self);
 	g_signal_connect (priv->settings, NM_SETTINGS_SIGNAL_CONNECTION_REMOVED,
 	                  G_CALLBACK (connection_removed), self);
+#endif
 
 	priv->config = g_object_ref (nm_config_get ());
 	g_signal_connect (G_OBJECT (priv->config),
@@ -1399,6 +1396,7 @@ finalize (GObject *object)
 
 	g_free (priv->hostname);
 
+#if 0
 	if (priv->settings) {
 		g_signal_handlers_disconnect_by_func (priv->settings, system_unmanaged_devices_changed_cb, netns);
 		g_signal_handlers_disconnect_by_func (priv->settings, system_hostname_changed_cb, netns);
@@ -1406,6 +1404,7 @@ finalize (GObject *object)
 		g_signal_handlers_disconnect_by_func (priv->settings, connection_removed, netns);
 		g_clear_object (&priv->settings);
 	}
+#endif
 
         G_OBJECT_CLASS (nm_netns_parent_class)->finalize (object);
 }
