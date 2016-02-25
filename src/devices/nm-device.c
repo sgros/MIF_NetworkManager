@@ -818,6 +818,8 @@ nm_device_get_priority (NMDevice *self)
 		return 600;
 	case NM_DEVICE_TYPE_OLPC_MESH:
 		return 650;
+	case NM_DEVICE_TYPE_VETH:
+		return 665;
 	case NM_DEVICE_TYPE_IP_TUNNEL:
 		return 675;
 	case NM_DEVICE_TYPE_MODEM:
@@ -3639,12 +3641,12 @@ nm_device_activate_schedule_stage2_device_config (NMDevice *self)
 }
 
 /*
- * nm_device_check_ip_failed
+ * check_ip_failed
  *
  * Progress the device to appropriate state if both IPv4 and IPv6 failed
  */
 static void
-nm_device_check_ip_failed (NMDevice *self, gboolean may_fail)
+check_ip_failed (NMDevice *self, gboolean may_fail)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
 	NMDeviceState state;
@@ -3672,6 +3674,28 @@ nm_device_check_ip_failed (NMDevice *self, gboolean may_fail)
 	nm_device_state_changed (self,
 	                         state,
 	                         NM_DEVICE_STATE_REASON_IP_CONFIG_UNAVAILABLE);
+}
+
+/*
+ * check_ip_done
+ *
+ * Progress the device to ip connectivity check state if IPv4 or IPv6 succeeded
+ */
+static void
+check_ip_done (NMDevice *self)
+{
+	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+
+	if (nm_device_get_state (self) != NM_DEVICE_STATE_IP_CONFIG)
+		return;
+
+	if (priv->ip4_state != IP_DONE && !get_ip_config_may_fail (self, AF_INET))
+		return;
+
+	if (priv->ip6_state != IP_DONE && !get_ip_config_may_fail (self, AF_INET6))
+		return;
+
+	nm_device_state_changed (self, NM_DEVICE_STATE_IP_CHECK, NM_DEVICE_STATE_REASON_NONE);
 }
 
 /*********************************************/
@@ -3932,14 +3956,14 @@ nm_device_handle_ipv4ll_event (sd_ipv4ll *ll, int event, void *data)
 		if (r < 0) {
 			_LOGE (LOGD_AUTOIP4, "invalid IPv4 link-local address received, error %d.", r);
 			priv->ip4_state = IP_FAIL;
-			nm_device_check_ip_failed (self, FALSE);
+			check_ip_failed (self, FALSE);
 			return;
 		}
 
 		if ((address.s_addr & IPV4LL_NETMASK) != IPV4LL_NETWORK) {
 			_LOGE (LOGD_AUTOIP4, "invalid address %08x received (not link-local).", address.s_addr);
 			priv->ip4_state = IP_FAIL;
-			nm_device_check_ip_failed (self, FALSE);
+			check_ip_failed (self, FALSE);
 			return;
 		}
 
@@ -3947,7 +3971,7 @@ nm_device_handle_ipv4ll_event (sd_ipv4ll *ll, int event, void *data)
 		if (config == NULL) {
 			_LOGE (LOGD_AUTOIP4, "failed to get IPv4LL config");
 			priv->ip4_state = IP_FAIL;
-			nm_device_check_ip_failed (self, FALSE);
+			check_ip_failed (self, FALSE);
 			return;
 		}
 
@@ -3958,7 +3982,7 @@ nm_device_handle_ipv4ll_event (sd_ipv4ll *ll, int event, void *data)
 			if (!ip4_config_merge_and_apply (self, config, TRUE, NULL)) {
 				_LOGE (LOGD_AUTOIP4, "failed to update IP4 config for autoip change.");
 				priv->ip4_state = IP_FAIL;
-				nm_device_check_ip_failed (self, FALSE);
+				check_ip_failed (self, FALSE);
 			}
 		} else
 			g_assert_not_reached ();
@@ -3968,7 +3992,7 @@ nm_device_handle_ipv4ll_event (sd_ipv4ll *ll, int event, void *data)
 	default:
 		_LOGW (LOGD_AUTOIP4, "IPv4LL address no longer valid after event %d.", event);
 		priv->ip4_state = IP_FAIL;
-		nm_device_check_ip_failed (self, FALSE);
+		check_ip_failed (self, FALSE);
 	}
 }
 
@@ -5487,9 +5511,9 @@ check_and_add_ipv6ll_addr (NMDevice *self)
 	if (s_ip6 && nm_setting_ip6_config_get_addr_gen_mode (s_ip6) == NM_SETTING_IP6_CONFIG_ADDR_GEN_MODE_STABLE_PRIVACY) {
 		if (!nm_utils_ipv6_addr_set_stable_privacy (&lladdr,
 		                                            nm_device_get_iface (self),
-			                                    nm_connection_get_uuid (connection),
+		                                            nm_connection_get_uuid (connection),
 		                                            priv->linklocal6_dad_counter++,
-			                                    &error)) {
+		                                            &error)) {
 			_LOGW (LOGD_IP6, "linklocal6: failed to generate an address: %s", error->message);
 			g_clear_error (&error);
 			linklocal6_failed (self);
@@ -6395,8 +6419,7 @@ nm_device_activate_stage3_ip6_start (NMDevice *self)
 	} else if (ret == NM_ACT_STAGE_RETURN_FINISH) {
 		/* Early finish, nothing more to do */
 		priv->ip6_state = IP_DONE;
-		if (nm_device_get_state (self) == NM_DEVICE_STATE_IP_CONFIG)
-			nm_device_state_changed (self, NM_DEVICE_STATE_IP_CHECK, NM_DEVICE_STATE_REASON_NONE);
+		check_ip_done (self);
 	} else if (ret == NM_ACT_STAGE_RETURN_WAIT) {
 		/* Wait for something to try IP config again */
 		priv->ip6_state = IP_WAIT;
@@ -6457,7 +6480,7 @@ activate_stage3_ip_config_start (NMDevice *self)
 	    && !nm_device_activate_stage3_ip6_start (self))
 		return;
 
-	nm_device_check_ip_failed (self, TRUE);
+	check_ip_failed (self, TRUE);
 }
 
 static gboolean
@@ -6592,7 +6615,7 @@ activate_stage4_ip4_config_timeout (NMDevice *self)
 
 	priv->ip4_state = IP_FAIL;
 
-	nm_device_check_ip_failed (self, FALSE);
+	check_ip_failed (self, FALSE);
 }
 
 
@@ -6652,7 +6675,7 @@ activate_stage4_ip6_config_timeout (NMDevice *self)
 
 	priv->ip6_state = IP_FAIL;
 
-	nm_device_check_ip_failed (self, FALSE);
+	check_ip_failed (self, FALSE);
 }
 
 
@@ -6895,13 +6918,11 @@ activate_stage5_ip4_config_commit (NMDevice *self)
 
 	arp_announce (self);
 
-	/* Enter the IP_CHECK state if this is the first method to complete */
-	priv->ip4_state = IP_DONE;
-
 	nm_device_remove_pending_action (self, PENDING_ACTION_DHCP4, FALSE);
 
-	if (nm_device_get_state (self) == NM_DEVICE_STATE_IP_CONFIG)
-		nm_device_state_changed (self, NM_DEVICE_STATE_IP_CHECK, NM_DEVICE_STATE_REASON_NONE);
+	/* Enter the IP_CHECK state if this is the first method to complete */
+	priv->ip4_state = IP_DONE;
+	check_ip_done (self);
 }
 
 static void
@@ -6988,26 +7009,24 @@ activate_stage5_ip6_config_commit (NMDevice *self)
 				 * then ensure dispatcher scripts get the DHCP lease information.
 				 */
 				nm_dispatcher_call (DISPATCHER_ACTION_DHCP6_CHANGE,
-						    nm_device_get_settings_connection (self),
-						    nm_device_get_applied_connection (self),
-						    self,
-						    NULL,
-						    NULL,
-						    NULL);
+				                    nm_device_get_settings_connection (self),
+				                    nm_device_get_applied_connection (self),
+				                    self,
+				                    NULL,
+				                    NULL,
+				                    NULL);
 			} else {
 				/* still waiting for first dhcp6 lease. */
 				return;
 			}
 		}
 
-		/* Enter the IP_CHECK state if this is the first method to complete */
-		priv->ip6_state = IP_DONE;
-
 		nm_device_remove_pending_action (self, PENDING_ACTION_DHCP6, FALSE);
 		nm_device_remove_pending_action (self, PENDING_ACTION_AUTOCONF6, FALSE);
 
-		if (nm_device_get_state (self) == NM_DEVICE_STATE_IP_CONFIG)
-			nm_device_state_changed (self, NM_DEVICE_STATE_IP_CHECK, NM_DEVICE_STATE_REASON_NONE);
+		/* Enter the IP_CHECK state if this is the first method to complete */
+		priv->ip6_state = IP_DONE;
+		check_ip_done (self);
 	} else {
 		_LOGW (LOGD_DEVICE | LOGD_IP6, "Activation: Stage 5 of 5 (IPv6 Commit) failed");
 		nm_device_state_changed (self, NM_DEVICE_STATE_FAILED, reason);
@@ -9131,7 +9150,7 @@ device_ipx_changed (NMPlatform *platform,
 
 		if (   priv->state > NM_DEVICE_STATE_DISCONNECTED
 		    && priv->state < NM_DEVICE_STATE_DEACTIVATING
-                    && (   (change_type == NM_PLATFORM_SIGNAL_CHANGED && addr->flags & IFA_F_DADFAILED)
+		    && (   (change_type == NM_PLATFORM_SIGNAL_CHANGED && addr->flags & IFA_F_DADFAILED)
 		        || (change_type == NM_PLATFORM_SIGNAL_REMOVED && addr->flags & IFA_F_TENTATIVE))) {
 			priv->dad6_failed_addrs = g_slist_append (priv->dad6_failed_addrs,
 			                                          g_memdup (addr, sizeof (NMPlatformIP6Address)));
@@ -9158,7 +9177,7 @@ NM_UTILS_FLAGS2STR_DEFINE (nm_unmanaged_flags2str, NMUnmanagedFlags,
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_PLATFORM_INIT, "platform-init"),
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_USER_EXPLICIT, "user-explicit"),
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_BY_DEFAULT, "by-default"),
-	NM_UTILS_FLAGS2STR (NM_UNMANAGED_USER_CONFIG, "user-config"),
+	NM_UTILS_FLAGS2STR (NM_UNMANAGED_USER_SETTINGS, "user-settings"),
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_USER_UDEV, "user-udev"),
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_EXTERNAL_DOWN, "external-down"),
 	NM_UTILS_FLAGS2STR (NM_UNMANAGED_IS_SLAVE, "is-slave"),
@@ -9219,7 +9238,7 @@ _get_managed_by_flags(NMUnmanagedFlags flags, NMUnmanagedFlags mask, gboolean fo
 	 * Some flags are authoritative, meaning they always cause
 	 * the device to be unmanaged (e.g. @NM_UNMANAGED_PLATFORM_INIT).
 	 *
-	 * OTOH, some flags can be overwritten. For example NM_UNMANAGED_USER_CONFIG
+	 * OTOH, some flags can be overwritten. For example NM_UNMANAGED_USER_SETTINGS
 	 * is ignored once NM_UNMANAGED_USER_EXPLICIT is set. The idea is that
 	 * the flag from the configuration has no effect once the user explicitly
 	 * touches the unmanaged flags. */
@@ -9241,29 +9260,18 @@ _get_managed_by_flags(NMUnmanagedFlags flags, NMUnmanagedFlags mask, gboolean fo
 		flags &= ~NM_UNMANAGED_USER_EXPLICIT;
 	}
 
-	if (   NM_FLAGS_ANY (mask, NM_UNMANAGED_USER_CONFIG)
-	    && !NM_FLAGS_ANY (flags, NM_UNMANAGED_USER_CONFIG)) {
-		/* NM_UNMANAGED_USER_CONFIG can only explicitly unmanage a device. It cannot
-		 * *manage* it. Having NM_UNMANAGED_USER_CONFIG explicitly not set, is the
+	if (   NM_FLAGS_ANY (mask, NM_UNMANAGED_USER_SETTINGS)
+	    && !NM_FLAGS_ANY (flags, NM_UNMANAGED_USER_SETTINGS)) {
+		/* NM_UNMANAGED_USER_SETTINGS can only explicitly unmanage a device. It cannot
+		 * *manage* it. Having NM_UNMANAGED_USER_SETTINGS explicitly not set, is the
 		 * same as having it not set at all. */
-		mask &= ~NM_UNMANAGED_USER_CONFIG;
+		mask &= ~NM_UNMANAGED_USER_SETTINGS;
 	}
 
-	if (NM_FLAGS_ANY (mask, NM_UNMANAGED_USER_UDEV | NM_UNMANAGED_USER_CONFIG)) {
+	if (NM_FLAGS_ANY (mask, NM_UNMANAGED_USER_UDEV)) {
 		/* configuration from udev or nm-config overwrites the by-default flag
 		 * which is based on the device type. */
 		flags &= ~NM_UNMANAGED_BY_DEFAULT;
-	}
-
-	if (NM_FLAGS_HAS (mask, NM_UNMANAGED_USER_CONFIG)) {
-		/* configuration from configuration overwrites the setting
-		 * originating from udev.
-		 *
-		 * Actually, this check has no effect, because at this point,
-		 * the device also is NM_UNMANAGED_USER_CONFIG. Thus clearing
-		 * NM_UNMANAGED_USER_UDEV doesn't change the outcome.
-		 * Just be explicit about this. */
-		flags &= ~NM_UNMANAGED_USER_UDEV;
 	}
 
 	if (   NM_FLAGS_HAS (mask, NM_UNMANAGED_IS_SLAVE)
@@ -9277,7 +9285,6 @@ _get_managed_by_flags(NMUnmanagedFlags flags, NMUnmanagedFlags mask, gboolean fo
 		 * are ignored. */
 
 		flags &= ~(  NM_UNMANAGED_BY_DEFAULT
-		           | NM_UNMANAGED_USER_CONFIG
 		           | NM_UNMANAGED_USER_UDEV
 		           | NM_UNMANAGED_EXTERNAL_DOWN);
 	}
@@ -9484,7 +9491,7 @@ nm_device_set_unmanaged_by_user_config (NMDevice *self, const GSList *unmanaged_
 	unmanaged = nm_device_spec_match_list (self, unmanaged_specs);
 
 	nm_device_set_unmanaged_by_flags (self,
-	                                  NM_UNMANAGED_USER_CONFIG,
+	                                  NM_UNMANAGED_USER_SETTINGS,
 	                                  unmanaged,
 	                                  unmanaged
 	                                      ? NM_DEVICE_STATE_REASON_NOW_UNMANAGED

@@ -1558,7 +1558,7 @@ nm_match_spec_match_config (const GSList *specs, guint cur_nm_version, const cha
  * any whitespace after the colon, so "interface-name: X" matches an interface
  * named " X".
  *
- * Returns: (transfer-full): the list of device specs.
+ * Returns: (transfer full): the list of device specs.
  */
 GSList *
 nm_match_spec_split (const char *value)
@@ -1653,7 +1653,7 @@ nm_match_spec_split (const char *value)
  * This is based on g_key_file_parse_string_as_value(), analog to
  * nm_match_spec_split() which is based on g_key_file_parse_value_as_string().
  *
- * Returns: (transfer-full): a joined list of device specs that can be
+ * Returns: (transfer full): a joined list of device specs that can be
  *   split again with nm_match_spec_split(). Note that
  *   nm_match_spec_split (nm_match_spec_join (specs)) yields the original
  *   result (which is not true the other way around because there are multiple
@@ -3627,3 +3627,65 @@ nm_utils_g_value_set_strv (GValue *value, GPtrArray *strings)
 
 	g_value_take_boxed (value, strv);
 }
+
+/*****************************************************************************/
+
+static gboolean
+debug_key_matches (const gchar *key,
+                   const gchar *token,
+                   guint        length)
+{
+	/* may not call GLib functions: see note in g_parse_debug_string() */
+	for (; length; length--, key++, token++) {
+		char k = (*key   == '_') ? '-' : g_ascii_tolower (*key  );
+		char t = (*token == '_') ? '-' : g_ascii_tolower (*token);
+
+		if (k != t)
+			return FALSE;
+	}
+
+	return *key == '\0';
+}
+
+/**
+ * nm_utils_parse_debug_string:
+ * @string: the string to parse
+ * @keys: the debug keys
+ * @nkeys: number of entires in @keys
+ *
+ * Similar to g_parse_debug_string(), but does not special
+ * case "help" or "all".
+ *
+ * Returns: the flags
+ */
+guint
+nm_utils_parse_debug_string (const char *string,
+                             const GDebugKey *keys,
+                             guint nkeys)
+{
+	guint i;
+	guint result = 0;
+	const char *q;
+
+	if (string == NULL)
+		return 0;
+
+	while (*string) {
+		q = strpbrk (string, ":;, \t");
+		if (!q)
+			q = string + strlen (string);
+
+		for (i = 0; i < nkeys; i++) {
+			if (debug_key_matches (keys[i].key, string, q - string))
+				result |= keys[i].value;
+		}
+
+		string = q;
+		if (*string)
+			string++;
+	}
+
+	return result;
+}
+
+
