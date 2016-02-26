@@ -100,6 +100,8 @@ NMPlatform * nm_netns_get_platform(NMNetns *self);
 void nm_netns_remove_device(NMNetns *self, NMDevice *device);
 void nm_netns_add_device(NMNetns *self, NMDevice *device);
 
+gboolean nm_netns_take_device(NMNetns *self, NMDevice *device, void (*callback)(gpointer user_data, gboolean timeout), gpointer user_data);
+
 NMNetns *nm_netns_new(const char *netns_name);
 
 gboolean nm_netns_setup(NMNetns *netns, gboolean isroot);

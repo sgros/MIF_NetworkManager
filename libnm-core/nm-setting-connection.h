@@ -61,6 +61,7 @@ G_BEGIN_DECLS
 #define NM_SETTING_CONNECTION_GATEWAY_PING_TIMEOUT "gateway-ping-timeout"
 #define NM_SETTING_CONNECTION_METERED        "metered"
 #define NM_SETTING_CONNECTION_LLDP           "lldp"
+#define NM_SETTING_CONNECTION_NETNS_ISOLATE  "netns-isolate"
 
 /* Types for property values */
 /**
@@ -148,6 +149,8 @@ gboolean    nm_setting_connection_is_slave_type        (NMSettingConnection *set
 const char *nm_setting_connection_get_slave_type       (NMSettingConnection *setting);
 NM_AVAILABLE_IN_1_2
 NMSettingConnectionAutoconnectSlaves nm_setting_connection_get_autoconnect_slaves (NMSettingConnection *setting);
+
+gboolean    nm_setting_connection_get_netns_isolate    (NMSettingConnection *setting);
 
 guint32     nm_setting_connection_get_num_secondaries  (NMSettingConnection *setting);
 const char *nm_setting_connection_get_secondary        (NMSettingConnection *setting, guint32 idx);

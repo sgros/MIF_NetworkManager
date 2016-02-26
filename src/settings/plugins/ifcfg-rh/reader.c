@@ -264,6 +264,12 @@ make_connection_setting (const char *file,
 		break;
 	}
 
+	/* Missing NETNS_ISOLATE is treated as "NETNS_ISOLATE=false" */
+	g_object_set (s_con,
+	              NM_SETTING_CONNECTION_NETNS_ISOLATE,
+	              svGetValueBoolean (ifcfg, "NETNS_ISOLATE", FALSE),
+	              NULL);
+
 	return NM_SETTING (s_con);
 }
 

@@ -2727,7 +2727,7 @@ static gboolean
 netns_activate(NMPlatform *platform, int netns_id)
 {
 	if (setns(netns_id, CLONE_NEWNET) < 0) {
-		nm_log_err (LOGD_NETNS, "Failed to set network namespace with error '%s'", strerror(errno));
+		nm_log_err (LOGD_NETNS, "Failed to set network namespace fd %d with error '%s'", netns_id, strerror(errno));
 		return FALSE;
 	}
 
@@ -4132,7 +4132,6 @@ link_set_netns (NMPlatform *platform,
                 int netns_fd)
 {
 	nm_auto_nlmsg struct nl_msg *nlmsg = NULL;
-	NMPObject obj_id;
 
 	_LOGD ("link: move link %d to network namespace with fd %d", ifindex, netns_fd);
 
@@ -4147,8 +4146,7 @@ link_set_netns (NMPlatform *platform,
 
 	NLA_PUT (nlmsg, IFLA_NET_NS_FD, 4, &netns_fd);
 
-	nmp_object_stackinit_id_link (&obj_id, ifindex);
-	return do_delete_object (platform, &obj_id, nlmsg);
+	return do_change_link (platform, ifindex, nlmsg) == NM_PLATFORM_ERROR_SUCCESS;
 
 nla_put_failure:
 	g_return_val_if_reached (FALSE);

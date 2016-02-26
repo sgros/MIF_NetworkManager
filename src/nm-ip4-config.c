@@ -345,7 +345,7 @@ nm_ip4_config_commit (const NMIP4Config *config, NMNetns *netns, int ifindex, gb
 	g_return_val_if_fail (config != NULL, FALSE);
 
 	/* Addresses */
-	nm_platform_ip4_address_sync (nm_netns_get_platform(netns), ifindex, priv->addresses,
+	nm_platform_ip4_address_sync (nm_netns_get_platform (netns), ifindex, priv->addresses,
 	                              default_route_metric >= 0 ? &added_addresses : NULL);
 
 	/* Routes */
@@ -411,9 +411,9 @@ nm_ip4_config_commit (const NMIP4Config *config, NMNetns *netns, int ifindex, gb
 			g_array_append_vals (routes, route, 1);
 		}
 
-		nm_route_manager_ip4_route_register_device_route_purge_list (nm_netns_controller_get_route_manager (), device_route_purge_list);
+		nm_route_manager_ip4_route_register_device_route_purge_list (nm_netns_get_route_manager (netns), device_route_purge_list);
 
-		success = nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, default_route_metric < 0, routes_full_sync);
+		success = nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (netns), ifindex, routes, default_route_metric < 0, routes_full_sync);
 		g_array_unref (routes);
 		if (!success)
 			return FALSE;

@@ -31,6 +31,7 @@
 #include <nm-dbus-interface.h>
 
 #include "nm-config.h"
+#include "nm-macros-internal.h"
 #include "nm-default-route-manager.h"
 #include "nm-route-manager.h"
 #include "nm-device.h"
@@ -78,6 +79,35 @@ enum {
 static guint signals[LAST_SIGNAL] = { 0 };
 
 typedef struct {
+	/*
+	 * Index of a device that is waited for.
+	 */
+	int ifindex;
+
+	/*
+	 * Function that should be called when device appears in this
+	 * network namespace.
+	 */
+	void (*callback)(gpointer user_data, gboolean timouet);
+
+	/*
+	 * Data that should be passed to the callback function
+	 */
+	gpointer user_data;
+
+	/*
+	 * Namespace in which device should appear
+	 */
+	NMNetns *netns;
+
+	/*
+	 * Timeout ID
+	 */
+	guint timeout_id;
+
+} DeviceChangeData;
+
+typedef struct {
 
 	/*
 	 * Is this root network namespace? For root network namespace
@@ -110,6 +140,14 @@ typedef struct {
 	GSList *devices;
 
 	/*
+	 * List of callbacks for devices that are waited for in this namespace
+	 * due to the network namespace switch.
+	 *
+	 * It is expected that each element of this list has a unique ifindex.
+	 */
+	GSList *devices_change_list;
+
+	/*
 	 * Default route manager instance for the namespace
 	 */
 	NMDefaultRouteManager *default_route_manager;
@@ -136,6 +174,126 @@ typedef struct {
 
 
 } NMNetnsPrivate;
+
+/**************************************************************/
+
+/*
+ * Functions that manipulate device change callback structure
+ */
+
+/*
+ * Remove callback structure from a list.
+ */
+static void
+_device_change_callback_remove(NMNetns *self, DeviceChangeData *dc)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	priv->devices_change_list = g_slist_remove (priv->devices_change_list, dc);
+
+	g_object_unref(dc->netns);
+
+	/*
+	 * Cancel timeout
+	 */
+	if (dc->timeout_id)
+		nm_clear_g_source (&dc->timeout_id);
+
+	g_slice_free (DeviceChangeData, dc);
+}
+
+/*
+ * Timeout triggered, notify caller and remove callback structure
+ */
+static gboolean
+_device_change_timeout_cb(gpointer user_data)
+{
+	DeviceChangeData *dc = (DeviceChangeData *)user_data;
+
+	nm_log_dbg (LOGD_NETNS, "Timeout while waiting for device to appear in network namespace");
+
+	(dc->callback)(dc->user_data, TRUE);
+
+	_device_change_callback_remove(dc->netns, dc);
+
+	return FALSE;
+}
+
+/*
+ * Add new callback structure and also add timeout for the given
+ * callback structure.
+ *
+ * TODO: Timeout should be a configurable value! We currently wait
+ * for 2000ms fixed!
+ */
+static DeviceChangeData *
+_device_change_callback_add(NMNetns *self,
+                            int ifindex,
+                            void (*callback)(gpointer user_data, gboolean timeout),
+                            gpointer user_data)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	DeviceChangeData *dc;
+
+	dc = g_slice_new (DeviceChangeData);
+	dc->callback = callback;
+	dc->user_data = user_data;
+	dc->ifindex = ifindex;
+	dc->netns = g_object_ref(self);
+
+	dc->timeout_id = g_timeout_add (5000, _device_change_timeout_cb, dc);
+
+	priv->devices_change_list = g_slist_prepend (priv->devices_change_list, dc);
+
+	return dc;
+}
+
+/*
+ * Search list of DeviceChangeData structures by interface index
+ * and return a pointer, or NULL if none.
+ */
+static DeviceChangeData *
+_device_change_find (NMNetns *self, NMDevice *device)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	int ifindex;
+	GSList *iter;
+
+	ifindex = nm_device_get_ifindex (device);
+
+	for (iter = priv->devices_change_list; iter; iter = iter->next) {
+		if (((DeviceChangeData *) iter->data)->ifindex == ifindex)
+			return iter->data;
+	}
+
+	return NULL;
+}
+
+/*
+ * Remove callback structure from a list, cancel timeout and
+ * call callback function.
+ */
+static void
+_device_change_callback_activate_and_remove(NMNetns *self, NMDevice *device)
+{
+	DeviceChangeData *dc;
+
+	nm_log_dbg (LOGD_NETNS, "Checking if device %s (ifindex=%d) is waited on in network namespace %s",
+		    nm_device_get_iface (device), nm_device_get_ifindex (device), nm_netns_get_name(self));
+
+	/*
+	 * Check if we were waiting for this device to appear. If not, return.
+	 */
+	if ((dc = _device_change_find (self, device)) == NULL)
+		return;
+
+	nm_log_dbg (LOGD_NETNS, "Device %s (ifindex=%d) appeared in network namespace %s",
+		    nm_device_get_iface (device), nm_device_get_ifindex (device), nm_netns_get_name(self));
+
+	(dc->callback)(dc->user_data, FALSE);
+
+	_device_change_callback_remove(self, dc);
+}
 
 /**************************************************************/
 
@@ -287,6 +445,49 @@ nm_netns_add_device(NMNetns *self, NMDevice *device)
 	}
 }
 
+gboolean
+nm_netns_take_device(NMNetns *self,
+                     NMDevice *device,
+                     void (*callback)(gpointer user_data, gboolean timeout),
+                     gpointer user_data)
+{
+	DeviceChangeData *dc;
+
+	nm_log_dbg (LOGD_NETNS, "Moving device %s (%d) from network namespace %s to %s",
+		    nm_device_get_iface (device),
+		    nm_device_get_ifindex (device),
+		    nm_netns_get_name (nm_device_get_netns (device)),
+		    nm_netns_get_name (self));
+
+	/*
+	 * Add callback structure and associated timeout
+	 */
+	dc = _device_change_callback_add(self, nm_device_get_ifindex(device), callback, user_data);
+
+	/*
+	 * Initiate change of network namespace for device
+	 */
+	if (!nm_platform_link_set_netns(nm_device_get_platform(device),
+	                                nm_device_get_ifindex(device),
+	                                nm_netns_get_id(self))) {
+
+		nm_log_dbg (LOGD_NETNS, "Error moving device %s (%d) from network namespace %s to %s",
+			    nm_device_get_iface (device),
+			    nm_device_get_ifindex (device),
+			    nm_netns_get_name (nm_device_get_netns (device)),
+			    nm_netns_get_name (self));
+
+		/*
+		 * Remove callback structure and associated timeout
+		 */
+		_device_change_callback_remove(self, dc);
+
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 /**************************************************************/
 
 NMDevice *
@@ -303,6 +504,8 @@ nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex)
 
 	return NULL;
 }
+
+/**************************************************************/
 
 static void
 remove_device (NMNetns *self,
@@ -494,9 +697,14 @@ add_device (NMNetns *self, NMDevice *device, GError **error)
 	 */
 	retry_connections_for_parent_device (self, device);
 
+	/*
+	 * If this device was moved from another network namespace 
+	 * see if anyone is waiting for it.
+	 */
+	_device_change_callback_activate_and_remove(self, device);
+
 	return TRUE;
 }
-
 
 static void
 platform_link_added (NMNetns *self,
@@ -581,6 +789,7 @@ platform_link_added (NMNetns *self,
 	if (device) {
 		if (nm_plugin_missing)
 			nm_device_set_nm_plugin_missing (device, TRUE);
+
 		if (nm_device_realize_start (device, plink, NULL, &error)) {
 			add_device (self, device, NULL);
 			nm_device_realize_finish (device, plink);

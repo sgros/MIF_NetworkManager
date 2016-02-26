@@ -78,6 +78,7 @@ typedef struct {
 	guint gateway_ping_timeout;
 	NMMetered metered;
 	NMSettingConnectionLldp lldp;
+	gboolean netns_isolate;
 } NMSettingConnectionPrivate;
 
 enum {
@@ -99,6 +100,7 @@ enum {
 	PROP_GATEWAY_PING_TIMEOUT,
 	PROP_METERED,
 	PROP_LLDP,
+	PROP_NETNS_ISOLATE,
 
 	LAST_PROP
 };
@@ -590,6 +592,22 @@ nm_setting_connection_get_slave_type (NMSettingConnection *setting)
 	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), NULL);
 
 	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->slave_type;
+}
+
+/**
+ * nm_setting_connection_get_netns_isolate:
+ * @setting: the #NMSettingConnection
+ *
+ * Returns the #NMSettingConnection:netns-isolate property of the connection.
+ *
+ * Returns: if connection should be isolated in separate network namespace
+ */
+gboolean
+nm_setting_connection_get_netns_isolate (NMSettingConnection *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), FALSE);
+
+	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->netns_isolate;
 }
 
 /**
@@ -1219,6 +1237,9 @@ set_property (GObject *object, guint prop_id,
 	case PROP_LLDP:
 		priv->lldp = g_value_get_int (value);
 		break;
+	case PROP_NETNS_ISOLATE:
+		priv->netns_isolate = g_value_get_boolean (value);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -1297,6 +1318,9 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_LLDP:
 		g_value_set_int (value, priv->lldp);
+		break;
+	case PROP_NETNS_ISOLATE:
+		g_value_set_boolean (value, nm_setting_connection_get_netns_isolate (setting));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1753,4 +1777,24 @@ nm_setting_connection_class_init (NMSettingConnectionClass *setting_class)
 		                   G_PARAM_READWRITE |
 		                   G_PARAM_CONSTRUCT |
 		                   G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingConnection:netns-isolate:
+	 *
+	 * %FALSE if the connection should not be isolated within some
+	 * network namespace, or %TRUE if the connection should be
+	 * isolated.
+	 *
+	 * TODO/BUG: What should be the network namespace name? Should
+	 * it be unique? Maybe it would be better to be specific for a
+	 * certain VPN connection.
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_NETNS_ISOLATE,
+		 g_param_spec_boolean (NM_SETTING_CONNECTION_NETNS_ISOLATE, "", "",
+		                       FALSE,
+		                       G_PARAM_READWRITE |
+		                       G_PARAM_CONSTRUCT |
+		                       NM_SETTING_PARAM_FUZZY_IGNORE |
+		                       G_PARAM_STATIC_STRINGS));
 }

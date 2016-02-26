@@ -45,6 +45,8 @@
 #include "nm-vpn-plugin-info.h"
 #include "nm-vpn-manager.h"
 #include "nm-netns-controller.h"
+#include "nm-netns.h"
+#include "nm-manager.h"
 
 #include "nmdbus-vpn-connection.h"
 
@@ -99,8 +101,6 @@ typedef struct {
 	/* Firewall */
 	NMFirewallManagerCallId fw_call;
 
-	NMDefaultRouteManager *default_route_manager;
-	NMRouteManager *route_manager;
 	GDBusProxy *proxy;
 	GCancellable *cancellable;
 	GVariant *connect_hash;
@@ -124,6 +124,9 @@ typedef struct {
 	int ip_ifindex;
 	char *banner;
 	guint32 mtu;
+
+	/* Network namespace of VPN connection or NULL if no isolation is in effect */
+	NMNetns *netns;
 } NMVpnConnectionPrivate;
 
 #define NM_VPN_CONNECTION_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_VPN_CONNECTION, NMVpnConnectionPrivate))
@@ -164,6 +167,10 @@ static void _set_vpn_state (NMVpnConnection *self,
                             VpnState vpn_state,
                             NMVpnConnectionStateReason reason,
                             gboolean quitting);
+
+static gboolean _vpn_connection_apply_config (NMVpnConnection *self);
+
+static void _cleanup_failed_config (NMVpnConnection *self);
 
 /*********************************************************************/
 
@@ -362,11 +369,22 @@ static void
 vpn_cleanup (NMVpnConnection *self, NMDevice *parent_dev)
 {
 	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
+	NMSettingConnection *s_con;
+	NMConnection *base_con;
 
 	if (priv->ip_ifindex) {
-		nm_platform_link_set_down (NM_PLATFORM_GET, priv->ip_ifindex);
-		nm_route_manager_route_flush (priv->route_manager, priv->ip_ifindex);
-		nm_platform_address_flush (NM_PLATFORM_GET, priv->ip_ifindex);
+		nm_platform_link_set_down (nm_netns_get_platform (priv->netns), priv->ip_ifindex);
+		nm_route_manager_route_flush (nm_netns_get_route_manager (priv->netns), priv->ip_ifindex);
+		nm_platform_address_flush (nm_netns_get_platform (priv->netns), priv->ip_ifindex);
+	}
+
+	base_con = _get_applied_connection (self);
+	s_con = nm_connection_get_setting_connection (base_con);
+
+	if (nm_setting_connection_get_netns_isolate(s_con)) {
+		nm_netns_controller_remove_netns (nm_netns_controller_get(), priv->netns);
+		g_object_unref (&priv->netns);
+		priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
 	}
 
 	remove_parent_device_config (self, parent_dev);
@@ -465,8 +483,8 @@ _set_vpn_state (NMVpnConnection *self,
 
 	dispatcher_cleanup (self);
 
-	nm_default_route_manager_ip4_update_default_route (priv->default_route_manager, self);
-	nm_default_route_manager_ip6_update_default_route (priv->default_route_manager, self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_get_default_route_manager(priv->netns), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_get_default_route_manager(priv->netns), self);
 
 	/* The connection gets destroyed by the VPN manager when it enters the
 	 * disconnected/failed state, but we need to keep it around for a bit
@@ -1037,17 +1055,111 @@ apply_parent_device_config (NMVpnConnection *self)
 	priv->last_device_ip6_config = vpn6_parent_config;
 }
 
+/*
+ * Callback function called when device appears in a target network namespace
+ */
+static void
+_vpn_connection_setup_device_cb (gpointer user_data, gboolean error)
+{
+	NMVpnConnection *self = NM_VPN_CONNECTION (user_data);
+	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
+	NMDevice *device;
+
+	if (error) {
+		_LOGD ("Failed to switch device %d to network namespace %s",
+		       priv->ip_ifindex, nm_netns_get_name(priv->netns));
+			/* TODO/BUG: Remove network name space if it didn't exist and its not persistent */
+
+		_cleanup_failed_config (self);
+
+		return;
+	}
+
+	device = nm_netns_get_device_by_ifindex (priv->netns, priv->ip_ifindex);
+
+	if (!device) {
+		_LOGD ("Device %d not found in the target network namespace %s",
+		       priv->ip_ifindex, nm_netns_get_name(priv->netns));
+
+		/* TODO/BUG: Remove network name space if it didn't exist and its not persistent */
+
+		_cleanup_failed_config (self);
+	}
+
+	if (!_vpn_connection_apply_config (self))
+		_cleanup_failed_config (self);
+}
+
 static gboolean
-nm_vpn_connection_apply_config (NMVpnConnection *self)
+_vpn_connection_prepare_netns (NMVpnConnection *self)
+{
+	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
+	NMDevice *device;
+	NMNetns *netns;
+	NMSettingConnection *s_con;
+	NMConnection *base_con;
+
+	base_con = _get_applied_connection (self);
+	s_con = nm_connection_get_setting_connection (base_con);
+
+	if (!nm_setting_connection_get_netns_isolate(s_con)) {
+		_LOGI ("VPN connection: No VPN network namespace isolation requested.");
+
+		priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
+		return _vpn_connection_apply_config(self);
+	}
+
+	_LOGI ("VPN connection: Switching to a new network namespace");
+
+	/*
+	 * TODO/BUG: We assume that the device via which VPN connection is
+	 * established is in root/main network namespace. VPN daemon is
+	 * certainly started in that network namespace (there is no functionality
+	 * now to switch to the proper namespace before starting VPN daemon so it
+	 * must be in root network namespace). For that reason we use nm_manager_get()
+	 * instead a proxy via NMNetns the physical device is in.
+	 */
+
+	device = nm_manager_get_device_by_ifindex (nm_manager_get (), priv->ip_ifindex);
+	if (!device) {
+		_LOGD ("Device %d not found in the root network namespace", priv->ip_ifindex);
+		/* TODO/BUG: Remove network name space if it didn't exist */
+		return FALSE;
+	}
+
+	/*
+	 * Create network namespace to be used for VPN isolation.
+	 *
+	 * TODO/BUG: React properly if NS already exists. NS name should be configurable.
+	 */
+	netns = nm_netns_controller_new_netns ("vpn_ns");
+	if (!netns)
+		return FALSE;
+
+	priv->netns = g_object_ref (netns);
+
+	/*
+	 * Initiate move of a VPN virtual device from root network
+	 * namespace to a new network namespace specifically created
+	 * for VPN. This is asynchronous taks since it takes time
+	 * for all the signals to propagate and for appropriate objects
+	 * to be created.
+	 */
+	return nm_netns_take_device(netns, device, _vpn_connection_setup_device_cb, self);
+}
+
+static gboolean
+_vpn_connection_apply_config (NMVpnConnection *self)
 {
 	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
 
 	if (priv->ip_ifindex > 0) {
-		nm_platform_link_set_up (NM_PLATFORM_GET, priv->ip_ifindex, NULL);
+
+		nm_platform_link_set_up (nm_netns_get_platform (priv->netns), priv->ip_ifindex, NULL);
 
 		if (priv->ip4_config) {
 			if (!nm_ip4_config_commit (priv->ip4_config,
-			                           nm_netns_controller_get_root_netns(),
+			                           priv->netns,
 			                           priv->ip_ifindex,
 			                           TRUE,
 			                           nm_vpn_connection_get_ip4_route_metric (self)))
@@ -1056,20 +1168,33 @@ nm_vpn_connection_apply_config (NMVpnConnection *self)
 
 		if (priv->ip6_config) {
 			if (!nm_ip6_config_commit (priv->ip6_config,
-			                           nm_netns_controller_get_root_netns(),
+			                           priv->netns,
 			                           priv->ip_ifindex,
 			                           TRUE))
 				return FALSE;
 		}
 
-		if (priv->mtu && priv->mtu != nm_platform_link_get_mtu (NM_PLATFORM_GET, priv->ip_ifindex))
-			nm_platform_link_set_mtu (NM_PLATFORM_GET, priv->ip_ifindex, priv->mtu);
+		/*
+		 * TODO/BUG: care should be taken that device might not be in the
+		 * root/main network namespace.
+		 *
+		 * Also, when setting MTU, it might happen that device is not in the
+		 * main network namespace and thus NM_PLATFORM_GET will not be able
+		 * to reach it thus generating an error.
+		 */
+		if (priv->mtu && priv->mtu != nm_platform_link_get_mtu (nm_netns_get_platform (priv->netns), priv->ip_ifindex))
+			nm_platform_link_set_mtu (nm_netns_get_platform (priv->netns), priv->ip_ifindex, priv->mtu);
+	} else {
+		/*
+		 * TODO/BUG: For VPNs that don't create virtual device we must do it ourselves
+		 * but only in case when VPN should be isolated.
+		 */
 	}
 
 	apply_parent_device_config (self);
 
-	nm_default_route_manager_ip4_update_default_route (priv->default_route_manager, self);
-	nm_default_route_manager_ip6_update_default_route (priv->default_route_manager, self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_get_default_route_manager(priv->netns), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_get_default_route_manager(priv->netns), self);
 
 	_LOGI ("VPN connection: (IP Config Get) complete");
 	_set_vpn_state (self, STATE_PRE_UP, NM_VPN_CONNECTION_STATE_REASON_NONE, FALSE);
@@ -1080,6 +1205,20 @@ static void
 _cleanup_failed_config (NMVpnConnection *self)
 {
 	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
+	NMSettingConnection *s_con;
+	NMConnection *base_con;
+
+	base_con = _get_applied_connection (self);
+	s_con = nm_connection_get_setting_connection (base_con);
+
+	if (nm_setting_connection_get_netns_isolate(s_con)) {
+		_LOGI ("VPN connection: Removing network namespace.");
+
+		nm_netns_controller_remove_netns (nm_netns_controller_get(), priv->netns);
+		g_object_unref (&priv->netns);
+		priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
+		return;
+	}
 
 	nm_exported_object_clear_and_unexport (&priv->ip4_config);
 	nm_exported_object_clear_and_unexport (&priv->ip6_config);
@@ -1111,7 +1250,7 @@ fw_change_zone_cb (NMFirewallManager *firewall_manager,
 		// FIXME: fail the activation?
 	}
 
-	if (!nm_vpn_connection_apply_config (self))
+	if (!_vpn_connection_prepare_netns (self))
 		_cleanup_failed_config (self);
 }
 
@@ -1158,7 +1297,7 @@ nm_vpn_connection_config_maybe_complete (NMVpnConnection *self,
 			                                                        self);
 			return;
 		} else
-			if (nm_vpn_connection_apply_config (self))
+			if (_vpn_connection_prepare_netns (self))
 				return;
 	}
 
@@ -1219,7 +1358,7 @@ process_generic_config (NMVpnConnection *self, GVariant *dict)
 
 	if (priv->ip_iface) {
 		/* Grab the interface index for address/routing operations */
-		priv->ip_ifindex = nm_platform_link_get_ifindex (NM_PLATFORM_GET, priv->ip_iface);
+		priv->ip_ifindex = nm_platform_link_get_ifindex (nm_netns_get_platform (priv->netns), priv->ip_iface);
 		if (priv->ip_ifindex <= 0) {
 			_LOGE ("failed to look up VPN interface index for \"%s\"", priv->ip_iface);
 			nm_vpn_connection_config_maybe_complete (self, FALSE);
@@ -2384,8 +2523,13 @@ nm_vpn_connection_init (NMVpnConnection *self)
 
 	priv->vpn_state = STATE_WAITING;
 	priv->secrets_idx = SECRETS_REQ_SYSTEM;
-	priv->default_route_manager = g_object_ref (nm_netns_controller_get_default_route_manager ());
-	priv->route_manager = g_object_ref (nm_netns_controller_get_route_manager ());
+
+	/*
+	 * TODO/BUG: Network namespace of a base device should be used.
+	 * Here, we assume that the base device is in the root network
+	 * namespace.
+	 */
+	priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
 }
 
 static void
@@ -2415,8 +2559,7 @@ dispose (GObject *object)
 
 	G_OBJECT_CLASS (nm_vpn_connection_parent_class)->dispose (object);
 
-	g_clear_object (&priv->default_route_manager);
-	g_clear_object (&priv->route_manager);
+	g_clear_object (&priv->netns);
 }
 
 static void

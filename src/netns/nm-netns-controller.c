@@ -30,6 +30,7 @@
 
 #include "nm-platform.h"
 #include "nm-linux-platform.h"
+#include "nm-device.h"
 #include "nm-netns.h"
 #include "nm-netns-controller.h"
 #include "NetworkManagerUtils.h"
@@ -253,6 +254,36 @@ create_new_namespace (NMNetnsController *self, const char *netnsname,
 	return netns;
 }
 
+NMNetns *
+nm_netns_controller_new_netns(const char *netns_name)
+{
+	return create_new_namespace (singleton_instance, netns_name, FALSE);
+}
+
+void
+nm_netns_controller_remove_netns (NMNetnsController *self,
+                                  NMNetns *netns)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
+	const char *path;
+
+	path = nm_exported_object_get_path ( NM_EXPORTED_OBJECT(netns));
+
+	nm_log_dbg (LOGD_NETNS, "Removing network namespace %s (path %s)", nm_netns_get_name (netns), path);
+
+	/* Emit removal D-Bus signal */
+	g_signal_emit (self, signals[NETNS_REMOVED], 0, netns);
+
+	/* Stop network namespace */
+	nm_netns_stop(netns);
+
+	/* Remove network namespace from a list */
+	g_hash_table_remove(priv->network_namespaces, path);
+
+	/* Signal change in property */
+	g_object_notify (G_OBJECT (self), NM_NETNS_CONTROLLER_NETWORK_NAMESPACES);
+}
+
 /******************************************************************/
 
 static void
@@ -308,7 +339,6 @@ impl_netns_controller_remove_namespace (NMNetnsController *self,
 		    netnsname, path);
 
 	if (path == NULL) {
-
 		nm_log_err (LOGD_NETNS, "Network namespace %s not found", netnsname);
 		g_dbus_method_invocation_return_error (context,
 						       NM_NETNS_ERROR,
@@ -320,7 +350,6 @@ impl_netns_controller_remove_namespace (NMNetnsController *self,
 	netns = g_hash_table_lookup(priv->network_namespaces, path);
 
 	if (netns == priv->root_ns) {
-
 		nm_log_err (LOGD_NETNS, "Root namespace %s can not be removed", netnsname);
 		g_dbus_method_invocation_return_error (context,
 						       NM_NETNS_ERROR,
@@ -329,17 +358,7 @@ impl_netns_controller_remove_namespace (NMNetnsController *self,
 		return;
 	}
 
-	/* Emit removal D-Bus signal */
-	g_signal_emit (self, signals[NETNS_REMOVED], 0, netns);
-
-	/* Stop network namespace */
-	nm_netns_stop(netns);
-
-	/* Remove network namespace from a list */
-	g_hash_table_remove(priv->network_namespaces, path);
-
-	/* Signal change in property */
-	g_object_notify (G_OBJECT (self), NM_NETNS_CONTROLLER_NETWORK_NAMESPACES);
+	nm_netns_controller_remove_netns (self, netns);
 
 	g_dbus_method_invocation_return_value (context,
 					       g_variant_new ("(s)",
