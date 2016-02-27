@@ -79,6 +79,9 @@ typedef struct {
 	NMMetered metered;
 	NMSettingConnectionLldp lldp;
 	gboolean netns_isolate;
+	gboolean netns_persistent;
+	char *netns_name;
+	int netns_timeout;
 } NMSettingConnectionPrivate;
 
 enum {
@@ -101,6 +104,9 @@ enum {
 	PROP_METERED,
 	PROP_LLDP,
 	PROP_NETNS_ISOLATE,
+	PROP_NETNS_PERSISTENT,
+	PROP_NETNS_NAME,
+	PROP_NETNS_TIMEOUT,
 
 	LAST_PROP
 };
@@ -608,6 +614,54 @@ nm_setting_connection_get_netns_isolate (NMSettingConnection *setting)
 	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), FALSE);
 
 	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->netns_isolate;
+}
+
+/**
+ * nm_setting_connection_get_netns_persistent:
+ * @setting: the #NMSettingConnection
+ *
+ * Returns the #NMSettingConnection:netns-persistent property of the connection.
+ *
+ * Returns: if network namespace for the connection should be persistent
+ */
+gboolean
+nm_setting_connection_get_netns_persistent (NMSettingConnection *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), FALSE);
+
+	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->netns_persistent;
+}
+
+/**
+ * nm_setting_connection_get_netns_timeout:
+ * @setting: the #NMSettingConnection
+ *
+ * Returns the #NMSettingConnection:netns-timeout property of the connection.
+ *
+ * Returns: time to wait for device to be switched into new network namespace
+ */
+int
+nm_setting_connection_get_netns_timeout (NMSettingConnection *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), NM_SETTING_CONNECTION_NETNS_TIMEOUT_DEFAULT);
+
+	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->netns_timeout;
+}
+
+/**
+ * nm_setting_connection_get_netns_name:
+ * @setting: the #NMSettingConnection
+ *
+ * Returns the #NMSettingConnection:netns-name property of the connection.
+ *
+ * Returns: a name of a network namespace of the connection
+ */
+const char *
+nm_setting_connection_get_netns_name (NMSettingConnection *setting)
+{
+	g_return_val_if_fail (NM_IS_SETTING_CONNECTION (setting), FALSE);
+
+	return NM_SETTING_CONNECTION_GET_PRIVATE (setting)->netns_name;
 }
 
 /**
@@ -1240,6 +1294,16 @@ set_property (GObject *object, guint prop_id,
 	case PROP_NETNS_ISOLATE:
 		priv->netns_isolate = g_value_get_boolean (value);
 		break;
+	case PROP_NETNS_PERSISTENT:
+		priv->netns_persistent = g_value_get_boolean (value);
+		break;
+	case PROP_NETNS_NAME:
+		g_free (priv->netns_name);
+		priv->netns_name = g_value_dup_string (value);
+		break;
+	case PROP_NETNS_TIMEOUT:
+		priv->netns_timeout = g_value_get_int (value);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -1321,6 +1385,15 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_NETNS_ISOLATE:
 		g_value_set_boolean (value, nm_setting_connection_get_netns_isolate (setting));
+		break;
+	case PROP_NETNS_PERSISTENT:
+		g_value_set_boolean (value, nm_setting_connection_get_netns_persistent (setting));
+		break;
+	case PROP_NETNS_NAME:
+		g_value_set_string (value, nm_setting_connection_get_netns_name (setting));
+		break;
+	case PROP_NETNS_TIMEOUT:
+		g_value_set_int (value, nm_setting_connection_get_netns_timeout (setting));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1784,10 +1857,6 @@ nm_setting_connection_class_init (NMSettingConnectionClass *setting_class)
 	 * %FALSE if the connection should not be isolated within some
 	 * network namespace, or %TRUE if the connection should be
 	 * isolated.
-	 *
-	 * TODO/BUG: What should be the network namespace name? Should
-	 * it be unique? Maybe it would be better to be specific for a
-	 * certain VPN connection.
 	 **/
 	g_object_class_install_property
 		(object_class, PROP_NETNS_ISOLATE,
@@ -1797,4 +1866,52 @@ nm_setting_connection_class_init (NMSettingConnectionClass *setting_class)
 		                       G_PARAM_CONSTRUCT |
 		                       NM_SETTING_PARAM_FUZZY_IGNORE |
 		                       G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingConnection:netns-persistent:
+	 *
+	 * %FALSE if the network namespace should be removed when the
+	 * connection terminates, or %TRUE if the network namespace
+	 * should kept after connection terminates.
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_NETNS_PERSISTENT,
+		 g_param_spec_boolean (NM_SETTING_CONNECTION_NETNS_PERSISTENT, "", "",
+		                       FALSE,
+		                       G_PARAM_READWRITE |
+		                       G_PARAM_CONSTRUCT |
+		                       NM_SETTING_PARAM_FUZZY_IGNORE |
+		                       G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingConnection:netns-name:
+	 *
+	 * name of the network name space. Special values are
+	 * "uuid" to take UUID of a VPN connection, "name" to
+	 * take a name of a VPN connection and anything else is
+	 * taken as a name as is.
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_NETNS_NAME,
+		 g_param_spec_string (NM_SETTING_CONNECTION_NETNS_NAME, "", "",
+		                      NULL,
+		                      G_PARAM_READWRITE |
+		                      G_PARAM_CONSTRUCT |
+		                      NM_SETTING_PARAM_FUZZY_IGNORE |
+		                      G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMSettingConnection:netns-timeout:
+	 *
+	 * Time in ms to wait for device switch
+	 */
+	g_object_class_install_property
+		(object_class, PROP_NETNS_TIMEOUT,
+		 g_param_spec_int (NM_SETTING_CONNECTION_NETNS_TIMEOUT, "", "",
+		                   0, G_MAXINT32, NM_SETTING_CONNECTION_NETNS_TIMEOUT_DEFAULT,
+		                   NM_SETTING_PARAM_FUZZY_IGNORE |
+		                   G_PARAM_READWRITE |
+		                   G_PARAM_CONSTRUCT |
+		                   G_PARAM_STATIC_STRINGS));
+
 }

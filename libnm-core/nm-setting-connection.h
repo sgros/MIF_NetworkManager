@@ -62,6 +62,9 @@ G_BEGIN_DECLS
 #define NM_SETTING_CONNECTION_METERED        "metered"
 #define NM_SETTING_CONNECTION_LLDP           "lldp"
 #define NM_SETTING_CONNECTION_NETNS_ISOLATE  "netns-isolate"
+#define NM_SETTING_CONNECTION_NETNS_PERSISTENT  "netns-persistent"
+#define NM_SETTING_CONNECTION_NETNS_NAME     "netns-name"
+#define NM_SETTING_CONNECTION_NETNS_TIMEOUT  "netns-timeout"
 
 /* Types for property values */
 /**
@@ -94,6 +97,11 @@ typedef enum {
 	NM_SETTING_CONNECTION_LLDP_DISABLE = 0,
 	NM_SETTING_CONNECTION_LLDP_ENABLE_RX = 1,
 } NMSettingConnectionLldp;
+
+/*
+ * Default timeout value
+ */
+#define NM_SETTING_CONNECTION_NETNS_TIMEOUT_DEFAULT     2000
 
 /**
  * NMSettingConnection:
@@ -151,6 +159,9 @@ NM_AVAILABLE_IN_1_2
 NMSettingConnectionAutoconnectSlaves nm_setting_connection_get_autoconnect_slaves (NMSettingConnection *setting);
 
 gboolean    nm_setting_connection_get_netns_isolate    (NMSettingConnection *setting);
+gboolean    nm_setting_connection_get_netns_persistent (NMSettingConnection *setting);
+const char *nm_setting_connection_get_netns_name       (NMSettingConnection *setting);
+int         nm_setting_connection_get_netns_timeout    (NMSettingConnection *setting);
 
 guint32     nm_setting_connection_get_num_secondaries  (NMSettingConnection *setting);
 const char *nm_setting_connection_get_secondary        (NMSettingConnection *setting, guint32 idx);

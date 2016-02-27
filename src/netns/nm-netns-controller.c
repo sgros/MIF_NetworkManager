@@ -165,6 +165,21 @@ nm_netns_controller_find_netns_by_path(const char *netns_path)
 	return g_hash_table_lookup (priv->network_namespaces, netns_path);
 }
 
+NMNetns *
+nm_netns_controller_find_netns_by_name(const char *netns_name)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+	GHashTableIter iter;
+	gpointer value;
+
+        g_hash_table_iter_init (&iter, priv->network_namespaces);
+        while (g_hash_table_iter_next (&iter, NULL, &value))
+		if (!strcmp (nm_netns_get_name(value), netns_name))
+			return value;
+
+	return NULL;
+}
+
 NMPlatform *
 nm_netns_controller_get_active_platform (void)
 {

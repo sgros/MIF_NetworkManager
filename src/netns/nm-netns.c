@@ -448,6 +448,7 @@ nm_netns_add_device(NMNetns *self, NMDevice *device)
 gboolean
 nm_netns_take_device(NMNetns *self,
                      NMDevice *device,
+                     int timeout,
                      void (*callback)(gpointer user_data, gboolean timeout),
                      gpointer user_data)
 {

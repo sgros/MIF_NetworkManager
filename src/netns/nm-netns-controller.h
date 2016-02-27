@@ -71,6 +71,8 @@ NMNetns * nm_netns_controller_get_root_netns(void);
 
 NMNetns * nm_netns_controller_find_netns_by_path(const char *netns_path);
 
+NMNetns * nm_netns_controller_find_netns_by_name(const char *netns_name);
+
 NMNetns * nm_netns_controller_new_netns(const char *netns_name);
 
 void nm_netns_controller_remove_netns (NMNetnsController *self, NMNetns *netns);

@@ -381,7 +381,8 @@ vpn_cleanup (NMVpnConnection *self, NMDevice *parent_dev)
 	base_con = _get_applied_connection (self);
 	s_con = nm_connection_get_setting_connection (base_con);
 
-	if (nm_setting_connection_get_netns_isolate(s_con)) {
+	if (    nm_setting_connection_get_netns_isolate(s_con)
+	    && !nm_setting_connection_get_netns_persistent (s_con)) {
 		nm_netns_controller_remove_netns (nm_netns_controller_get(), priv->netns);
 		g_object_unref (&priv->netns);
 		priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
@@ -1098,6 +1099,8 @@ _vpn_connection_prepare_netns (NMVpnConnection *self)
 	NMNetns *netns;
 	NMSettingConnection *s_con;
 	NMConnection *base_con;
+	const char *netns_name;
+	int timeout;
 
 	base_con = _get_applied_connection (self);
 	s_con = nm_connection_get_setting_connection (base_con);
@@ -1132,9 +1135,34 @@ _vpn_connection_prepare_netns (NMVpnConnection *self)
 	 *
 	 * TODO/BUG: React properly if NS already exists. NS name should be configurable.
 	 */
-	netns = nm_netns_controller_new_netns ("vpn_ns");
-	if (!netns)
-		return FALSE;
+	netns_name = nm_setting_connection_get_netns_name (s_con);
+
+	if (!strcmp (netns_name, "uuid")) {
+		netns_name = nm_setting_connection_get_uuid (s_con);
+	} else if (!strcmp (netns_name, "name")) {
+		netns_name = nm_setting_connection_get_id (s_con);
+	}
+		/* else, take name as is. TODO: check if sane */
+
+	/*
+	 * First check if network namespace already exists.
+	 */
+	netns = nm_netns_controller_find_netns_by_name (netns_name);
+
+	if (!netns) {
+
+		/*
+		 * Target network namespace doesn't exist so create it
+		 */
+		_LOGD ("Network namespace '%s' doesn't exist. Creating it!", netns_name);
+
+		netns = nm_netns_controller_new_netns (netns_name);
+		if (!netns) {
+			_LOGD ("Error creating network namespace '%s'", netns_name);
+			return FALSE;
+		}
+
+	}
 
 	priv->netns = g_object_ref (netns);
 
@@ -1145,7 +1173,12 @@ _vpn_connection_prepare_netns (NMVpnConnection *self)
 	 * for all the signals to propagate and for appropriate objects
 	 * to be created.
 	 */
-	return nm_netns_take_device(netns, device, _vpn_connection_setup_device_cb, self);
+	timeout = nm_setting_connection_get_netns_timeout (s_con);
+	return nm_netns_take_device(netns,
+	                            device,
+	                            timeout > 0 ? timeout : NM_SETTING_CONNECTION_NETNS_TIMEOUT_DEFAULT,
+	                            _vpn_connection_setup_device_cb,
+	                            self);
 }
 
 static gboolean
@@ -1211,13 +1244,13 @@ _cleanup_failed_config (NMVpnConnection *self)
 	base_con = _get_applied_connection (self);
 	s_con = nm_connection_get_setting_connection (base_con);
 
-	if (nm_setting_connection_get_netns_isolate(s_con)) {
+	if (    nm_setting_connection_get_netns_isolate (s_con)
+	    && !nm_setting_connection_get_netns_persistent (s_con)) {
 		_LOGI ("VPN connection: Removing network namespace.");
 
 		nm_netns_controller_remove_netns (nm_netns_controller_get(), priv->netns);
 		g_object_unref (&priv->netns);
 		priv->netns = g_object_ref (nm_netns_controller_get_root_netns ());
-		return;
 	}
 
 	nm_exported_object_clear_and_unexport (&priv->ip4_config);
