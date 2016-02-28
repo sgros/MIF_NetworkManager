@@ -459,7 +459,7 @@ _config_changed_cb (NMConfig *config, NMConfigData *config_data, NMConfigChangeF
 
 /************************************************************************/
 
-static NMDevice *
+NMDevice *
 nm_manager_get_device_by_path (NMManager *manager, const char *path)
 {
 	GSList *iter;
@@ -1926,6 +1926,14 @@ add_device (NMManager *self, NMDevice *device, GError **error)
 	 * parent device, retry to activate them.
 	 */
 	retry_connections_for_parent_device (self, device);
+
+	/*
+	 * BUG/HACK: This is here as a hack because root network namespace
+	 * isn't handled by appropriate NMNetns object but by NMManager
+	 * object and we need this feedback in order to implement device
+	 * move from some network namespace to root network namespace.
+	 */
+	nm_netns_device_change_callback_activate_and_remove(nm_netns_controller_get_root_netns(), device);
 
 	return TRUE;
 }

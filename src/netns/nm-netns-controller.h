@@ -63,26 +63,28 @@ NMNetnsController * nm_netns_controller_get (void);
 
 void nm_netns_controller_stop (NMNetnsController *self);
 
-void nm_netns_controller_activate_root_netns(void);
-void nm_netns_controller_activate_netns(NMNetns *netns);
+void nm_netns_controller_activate_root_netns (void);
+void nm_netns_controller_activate_netns (NMNetns *netns);
 
-NMNetns * nm_netns_controller_get_active_netns(void);
-NMNetns * nm_netns_controller_get_root_netns(void);
+NMNetns * nm_netns_controller_get_active_netns (void);
+NMNetns * nm_netns_controller_get_root_netns (void);
 
-NMNetns * nm_netns_controller_find_netns_by_path(const char *netns_path);
+NMNetns * nm_netns_controller_find_netns_by_path (const char *netns_path);
 
-NMNetns * nm_netns_controller_find_netns_by_name(const char *netns_name);
+NMNetns * nm_netns_controller_find_netns_by_name (const char *netns_name);
 
-NMNetns * nm_netns_controller_new_netns(const char *netns_name);
+NMDevice * nm_netns_controller_find_device_by_path (const char *device_path);
+
+NMNetns * nm_netns_controller_new_netns (const char *netns_name);
 
 void nm_netns_controller_remove_netns (NMNetnsController *self, NMNetns *netns);
 
-NMPlatform * nm_netns_controller_get_active_platform(void);
-NMPlatform * nm_netns_controller_get_root_platform(NMNetnsController *self);
+NMPlatform * nm_netns_controller_get_active_platform (void);
+NMPlatform * nm_netns_controller_get_root_platform (NMNetnsController *self);
 
-NMDefaultRouteManager *nm_netns_controller_get_default_route_manager(void);
-NMRouteManager *nm_netns_controller_get_route_manager(void);
+NMDefaultRouteManager *nm_netns_controller_get_default_route_manager (void);
+NMRouteManager *nm_netns_controller_get_route_manager (void);
 
-NMNetnsController *nm_netns_controller_new(void);
+NMNetnsController *nm_netns_controller_new (void);
 
 #endif  /* __NM_NETNS_CONTROLLER_H__ */

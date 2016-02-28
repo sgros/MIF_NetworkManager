@@ -35,19 +35,18 @@
       </arg>
     </method>
 
-    <method name="MoveDeviceToNetworkNamespace">
+    <method name="TakeDevice">
       <tp:docstring>
-        Change network namespace of device.
+        Take given device, i.e. move it to this network namespace.
       </tp:docstring>
       <arg name="device" type="o" direction="in">
         <tp:docstring>
-          Device from network namespace that should be moved to another
-          network namespace.
+          Device that should be taken.
         </tp:docstring>
       </arg>
-      <arg name="network_namespace" type="o" direction="in">
+      <arg name="timeout" type="i" direction="in">
         <tp:docstring>
-          Network namespace to which device should be moved to.
+          Timeout in miliseconds to wait for the operation to complete.
         </tp:docstring>
       </arg>
     </method>

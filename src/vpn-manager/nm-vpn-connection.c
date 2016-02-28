@@ -1060,13 +1060,13 @@ apply_parent_device_config (NMVpnConnection *self)
  * Callback function called when device appears in a target network namespace
  */
 static void
-_vpn_connection_setup_device_cb (gpointer user_data, gboolean error)
+_vpn_connection_setup_device_cb (gpointer user_data, gboolean timeout)
 {
 	NMVpnConnection *self = NM_VPN_CONNECTION (user_data);
 	NMVpnConnectionPrivate *priv = NM_VPN_CONNECTION_GET_PRIVATE (self);
 	NMDevice *device;
 
-	if (error) {
+	if (timeout) {
 		_LOGD ("Failed to switch device %d to network namespace %s",
 		       priv->ip_ifindex, nm_netns_get_name(priv->netns));
 			/* TODO/BUG: Remove network name space if it didn't exist and its not persistent */

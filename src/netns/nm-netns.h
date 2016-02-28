@@ -76,36 +76,39 @@ typedef struct {
 
 GType nm_netns_get_type (void);
 
-const char *nm_netns_export(NMNetns *self);
+const char *nm_netns_export (NMNetns *self);
 
 NMDevice *nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex);
+NMDevice *nm_netns_get_device_by_path (NMNetns *self, const char *device_path);
 
 char *nm_netns_get_connection_iface (NMNetns *self, NMConnection *connection, NMDevice **out_parent, GError **error);
 
-void nm_netns_set_name(NMNetns *netns, const char *name);
-const char *nm_netns_get_name(NMNetns *netns);
+void nm_netns_set_name (NMNetns *netns, const char *name);
+const char *nm_netns_get_name (NMNetns *netns);
 
-void nm_netns_set_id(NMNetns *self, int netns_id);
-int nm_netns_get_id(NMNetns *self);
+void nm_netns_set_id (NMNetns *self, int netns_id);
+int nm_netns_get_id (NMNetns *self);
 
-void nm_netns_set_default_route_manager(NMNetns *self, NMDefaultRouteManager *default_route_manager);
-NMDefaultRouteManager *nm_netns_get_default_route_manager(NMNetns *self);
+void nm_netns_set_default_route_manager (NMNetns *self, NMDefaultRouteManager *default_route_manager);
+NMDefaultRouteManager *nm_netns_get_default_route_manager (NMNetns *self);
 
-void nm_netns_set_route_manager(NMNetns *self, NMRouteManager *route_manager);
-NMRouteManager *nm_netns_get_route_manager(NMNetns *self);
+void nm_netns_set_route_manager (NMNetns *self, NMRouteManager *route_manager);
+NMRouteManager *nm_netns_get_route_manager (NMNetns *self);
 
-void nm_netns_set_platform(NMNetns *self, NMPlatform *platform);
-NMPlatform * nm_netns_get_platform(NMNetns *self);
+void nm_netns_set_platform (NMNetns *self, NMPlatform *platform);
+NMPlatform * nm_netns_get_platform (NMNetns *self);
 
-void nm_netns_remove_device(NMNetns *self, NMDevice *device);
-void nm_netns_add_device(NMNetns *self, NMDevice *device);
+void nm_netns_remove_device (NMNetns *self, NMDevice *device);
+void nm_netns_add_device (NMNetns *self, NMDevice *device);
 
-gboolean nm_netns_take_device(NMNetns *self, NMDevice *device, int timeout, void (*callback)(gpointer user_data, gboolean timeout), gpointer user_data);
+gboolean nm_netns_take_device (NMNetns *self, NMDevice *device, int timeout, void (*callback)(gpointer user_data, gboolean timeout), gpointer user_data);
 
-NMNetns *nm_netns_new(const char *netns_name);
+void nm_netns_device_change_callback_activate_and_remove(NMNetns *self, NMDevice *device);
 
-gboolean nm_netns_setup(NMNetns *netns, gboolean isroot);
+NMNetns *nm_netns_new (const char *netns_name);
 
-void nm_netns_stop(NMNetns *netns);
+gboolean nm_netns_setup (NMNetns *netns, gboolean isroot);
+
+void nm_netns_stop (NMNetns *netns);
 
 #endif  /* __NM_NETNS_H__ */

@@ -214,6 +214,24 @@ nm_netns_controller_get_route_manager (void)
 
 /******************************************************************/
 
+NMDevice *
+nm_netns_controller_find_device_by_path (const char *device_path)
+{
+	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
+	GHashTableIter iter;
+	gpointer value;
+	NMDevice *device;
+
+        g_hash_table_iter_init (&iter, priv->network_namespaces);
+        while (g_hash_table_iter_next (&iter, NULL, &value))
+		if ((device = nm_netns_get_device_by_path (value, device_path)) != NULL)
+			return device;
+
+	return NULL;
+}
+
+/******************************************************************/
+
 static NMNetns *
 create_new_namespace (NMNetnsController *self, const char *netnsname,
                       gboolean isroot)
