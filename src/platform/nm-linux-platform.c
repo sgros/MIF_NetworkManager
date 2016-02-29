@@ -1498,8 +1498,8 @@ _new_from_nl_link (NMPlatform *platform, const NMPCache *cache, struct nlmsghdr 
 		nl_info_data = li[IFLA_INFO_DATA];
 	}
 
-	obj->link.flags = ifi->ifi_flags;
-	obj->link.connected = NM_FLAGS_HAS (obj->link.flags, IFF_LOWER_UP);
+	obj->link.n_ifi_flags = ifi->ifi_flags;
+	obj->link.connected = NM_FLAGS_HAS (obj->link.n_ifi_flags, IFF_LOWER_UP);
 	obj->link.arptype = ifi->ifi_type;
 
 	obj->link.type = _linktype_get_type (platform,
@@ -1507,7 +1507,7 @@ _new_from_nl_link (NMPlatform *platform, const NMPCache *cache, struct nlmsghdr 
 	                                     nl_info_kind,
 	                                     obj->link.ifindex,
 	                                     obj->link.name,
-	                                     obj->link.flags,
+	                                     obj->link.n_ifi_flags,
 	                                     obj->link.arptype,
 	                                     completed_from_cache,
 	                                     &link_cached,
@@ -1684,9 +1684,9 @@ _new_from_nl_addr (struct nlmsghdr *nlh, gboolean id_only)
 	obj->ip_address.source = NM_IP_CONFIG_SOURCE_KERNEL;
 
 	if (!is_v4) {
-		obj->ip6_address.flags = tb[IFA_FLAGS]
-		                         ? nla_get_u32 (tb[IFA_FLAGS])
-		                         : ifa->ifa_flags;
+		obj->ip6_address.n_ifa_flags = tb[IFA_FLAGS]
+		                               ? nla_get_u32 (tb[IFA_FLAGS])
+		                               : ifa->ifa_flags;
 	}
 
 	if (is_v4) {
@@ -3336,9 +3336,9 @@ cache_pre_hook (NMPCache *cache, const NMPObject *old, const NMPObject *new, NMP
 			if (   ops_type == NMP_CACHE_OPS_UPDATED
 			    && old && new /* <-- nonsensical, make coverity happy */
 			    && old->_link.netlink.is_in_netlink
-			    && NM_FLAGS_HAS (old->link.flags, IFF_LOWER_UP)
+			    && NM_FLAGS_HAS (old->link.n_ifi_flags, IFF_LOWER_UP)
 			    && new->_link.netlink.is_in_netlink
-			    && !NM_FLAGS_HAS (new->link.flags, IFF_LOWER_UP)) {
+			    && !NM_FLAGS_HAS (new->link.n_ifi_flags, IFF_LOWER_UP)) {
 				delayed_action_schedule (platform,
 				                         DELAYED_ACTION_TYPE_REFRESH_ALL_IP4_ROUTES |
 				                         DELAYED_ACTION_TYPE_REFRESH_ALL_IP6_ROUTES,
@@ -3402,8 +3402,8 @@ cache_pre_hook (NMPCache *cache, const NMPObject *old, const NMPObject *new, NMP
 
 			changed_master =    (new && new->_link.netlink.is_in_netlink && new->link.master > 0 ? new->link.master : 0)
 			                 != (old && old->_link.netlink.is_in_netlink && old->link.master > 0 ? old->link.master : 0);
-			changed_connected =    (new && new->_link.netlink.is_in_netlink ? NM_FLAGS_HAS (new->link.flags, IFF_LOWER_UP) : 2)
-			                    != (old && old->_link.netlink.is_in_netlink ? NM_FLAGS_HAS (old->link.flags, IFF_LOWER_UP) : 2);
+			changed_connected =    (new && new->_link.netlink.is_in_netlink ? NM_FLAGS_HAS (new->link.n_ifi_flags, IFF_LOWER_UP) : 2)
+			                    != (old && old->_link.netlink.is_in_netlink ? NM_FLAGS_HAS (old->link.n_ifi_flags, IFF_LOWER_UP) : 2);
 
 			if (changed_master || changed_connected) {
 				ifindex1 = (old && old->_link.netlink.is_in_netlink && old->link.master > 0) ? old->link.master : 0;
@@ -4872,7 +4872,6 @@ link_vlan_change (NMPlatform *platform,
 	NMLinuxPlatformPrivate *priv = NM_LINUX_PLATFORM_GET_PRIVATE (platform);
 	const NMPObject *obj_cache;
 	nm_auto_nlmsg struct nl_msg *nlmsg = NULL;
-	unsigned flags;
 	const NMPObjectLnkVlan *lnk;
 	guint new_n_ingress_map = 0;
 	guint new_n_egress_map = 0;
@@ -4890,7 +4889,6 @@ link_vlan_change (NMPlatform *platform,
 	}
 
 	lnk = obj_cache->_link.netlink.lnk ? &obj_cache->_link.netlink.lnk->_lnk_vlan : NULL;
-	flags = obj_cache->link.flags;
 
 	flags_set &= flags_mask;
 
@@ -5345,7 +5343,7 @@ ip6_address_add (NMPlatform *platform,
                  struct in6_addr peer_addr,
                  guint32 lifetime,
                  guint32 preferred,
-                 guint flags)
+                 guint32 flags)
 {
 	NMPObject obj_id;
 	nm_auto_nlmsg struct nl_msg *nlmsg = NULL;

@@ -564,7 +564,7 @@ _ip_address_add (gboolean external_command,
                  guint32 lifetime,
                  guint32 preferred,
                  const char *label,
-                 guint flags)
+                 guint32 flags)
 {
 	gint64 end_time;
 
@@ -1028,7 +1028,7 @@ nmtstp_ip6_address_add (gboolean external_command,
                         struct in6_addr peer_address,
                         guint32 lifetime,
                         guint32 preferred,
-                        guint flags)
+                        guint32 flags)
 {
 	_ip_address_add (external_command,
 	                 FALSE,
@@ -1282,7 +1282,7 @@ nmtstp_link_set_updown (gboolean external_command,
 		plink = nm_platform_link_get (NM_PLATFORM_GET, ifindex);
 		g_assert (plink);
 
-		if (NM_FLAGS_HAS (plink->flags, IFF_UP) == !!up)
+		if (NM_FLAGS_HAS (plink->n_ifi_flags, IFF_UP) == !!up)
 			break;
 
 		/* for internal command, we expect not to reach this line.*/

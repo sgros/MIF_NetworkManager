@@ -854,13 +854,13 @@ nm_platform_link_refresh (NMPlatform *self, int ifindex)
 	return TRUE;
 }
 
-static guint32
+static guint
 _link_get_flags (NMPlatform *self, int ifindex)
 {
 	const NMPlatformLink *pllink;
 
 	pllink = nm_platform_link_get (self, ifindex);
-	return pllink ? pllink->flags : IFF_NOARP;
+	return pllink ? pllink->n_ifi_flags : IFF_NOARP;
 }
 
 /**
@@ -2501,7 +2501,7 @@ nm_platform_ip6_address_add (NMPlatform *self,
                              struct in6_addr peer_address,
                              guint32 lifetime,
                              guint32 preferred,
-                             guint flags)
+                             guint32 flags)
 {
 	_CHECK_SELF (self, klass, FALSE);
 
@@ -2520,7 +2520,7 @@ nm_platform_ip6_address_add (NMPlatform *self,
 		addr.timestamp = 0; /* set it to zero, which to_string will treat as *now* */
 		addr.lifetime = lifetime;
 		addr.preferred = preferred;
-		addr.flags = flags;
+		addr.n_ifa_flags = flags;
 
 		_LOGD ("address: adding or updating IPv6 address: %s", nm_platform_ip6_address_to_string (&addr, NULL, 0));
 	}
@@ -2741,7 +2741,7 @@ nm_platform_ip6_address_sync (NMPlatform *self, int ifindex, const GArray *known
 
 		if (!nm_platform_ip6_address_add (self, ifindex, known_address->address,
 		                                  known_address->plen, known_address->peer_address,
-		                                  lifetime, preferred, known_address->flags))
+		                                  lifetime, preferred, known_address->n_ifa_flags))
 			return FALSE;
 	}
 
@@ -3018,19 +3018,19 @@ nm_platform_link_to_string (const NMPlatformLink *link, char *buf, gsize len)
 		return buf;
 
 	str_flags = g_string_new (NULL);
-	if (NM_FLAGS_HAS (link->flags, IFF_NOARP))
+	if (NM_FLAGS_HAS (link->n_ifi_flags, IFF_NOARP))
 		g_string_append (str_flags, "NOARP,");
-	if (NM_FLAGS_HAS (link->flags, IFF_UP))
+	if (NM_FLAGS_HAS (link->n_ifi_flags, IFF_UP))
 		g_string_append (str_flags, "UP");
 	else
 		g_string_append (str_flags, "DOWN");
 	if (link->connected)
 		g_string_append (str_flags, ",LOWER_UP");
 
-	if (link->flags) {
+	if (link->n_ifi_flags) {
 		char str_flags_buf[64];
 
-		nm_platform_link_flags2str (link->flags, str_flags_buf, sizeof (str_flags_buf));
+		nm_platform_link_flags2str (link->n_ifi_flags, str_flags_buf, sizeof (str_flags_buf));
 		g_string_append_printf (str_flags, ";%s", str_flags_buf);
 	}
 
@@ -3529,7 +3529,7 @@ nm_platform_ip6_address_to_string (const NMPlatformIP6Address *address, char *bu
 
 	_to_string_dev (NULL, address->ifindex, str_dev, sizeof (str_dev));
 
-	nm_platform_addr_flags2str (address->flags, &s_flags[NM_STRLEN (S_FLAGS_PREFIX)], sizeof (s_flags) - NM_STRLEN (S_FLAGS_PREFIX));
+	nm_platform_addr_flags2str (address->n_ifa_flags, &s_flags[NM_STRLEN (S_FLAGS_PREFIX)], sizeof (s_flags) - NM_STRLEN (S_FLAGS_PREFIX));
 	if (s_flags[NM_STRLEN (S_FLAGS_PREFIX)] == '\0')
 		s_flags[0] = '\0';
 	else
@@ -3734,7 +3734,7 @@ nm_platform_link_cmp (const NMPlatformLink *a, const NMPlatformLink *b)
 	_CMP_FIELD_STR (a, b, name);
 	_CMP_FIELD (a, b, master);
 	_CMP_FIELD (a, b, parent);
-	_CMP_FIELD (a, b, flags);
+	_CMP_FIELD (a, b, n_ifi_flags);
 	_CMP_FIELD (a, b, connected);
 	_CMP_FIELD (a, b, mtu);
 	_CMP_FIELD_BOOL (a, b, initialized);
@@ -3897,7 +3897,7 @@ nm_platform_ip6_address_cmp (const NMPlatformIP6Address *a, const NMPlatformIP6A
 	_CMP_FIELD (a, b, timestamp);
 	_CMP_FIELD (a, b, lifetime);
 	_CMP_FIELD (a, b, preferred);
-	_CMP_FIELD (a, b, flags);
+	_CMP_FIELD (a, b, n_ifa_flags);
 	return 0;
 }
 
