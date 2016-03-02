@@ -27,10 +27,11 @@
 #include <linux/if_link.h>
 
 #include "nm-dbus-interface.h"
-#include "nm-default.h"
-#include "NetworkManagerUtils.h"
-#include "nm-setting-vlan.h"
 #include "nm-core-types-internal.h"
+
+#include "nm-core-utils.h"
+#include "nm-setting-vlan.h"
+#include "nm-setting-wired.h"
 
 #define NM_TYPE_PLATFORM            (nm_platform_get_type ())
 #define NM_PLATFORM(obj)            (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_PLATFORM, NMPlatform))
@@ -221,6 +222,11 @@ typedef struct {
 	guint32 timestamp; \
 	guint32 lifetime;   /* seconds since timestamp */ \
 	guint32 preferred;  /* seconds since timestamp */ \
+	\
+	/* ifa_flags in 'struct ifaddrmsg' from <linux/if_addr.h>, extended to 32 bit by
+	 * IFA_FLAGS attribute. */ \
+	guint32 n_ifa_flags; \
+	\
 	int plen; \
 	;
 
@@ -269,7 +275,6 @@ struct _NMPlatformIP6Address {
 	__NMPlatformIPAddress_COMMON;
 	struct in6_addr address;
 	struct in6_addr peer_address;
-	guint32 n_ifa_flags; /* ifa_flags from <linux/if_addr.h>, field type "unsigned int" is as used in rtnl_addr_get_flags. */
 };
 
 typedef union {
@@ -589,6 +594,7 @@ typedef struct {
 	                             in_addr_t peer_address,
 	                             guint32 lifetime,
 	                             guint32 preferred_lft,
+	                             guint32 flags,
 	                             const char *label);
 	gboolean (*ip6_address_add) (NMPlatform *,
 	                             int ifindex,
@@ -862,6 +868,7 @@ gboolean nm_platform_ip4_address_add (NMPlatform *self,
                                       in_addr_t peer_address,
                                       guint32 lifetime,
                                       guint32 preferred_lft,
+                                      guint32 flags,
                                       const char *label);
 gboolean nm_platform_ip6_address_add (NMPlatform *self,
                                       int ifindex,
@@ -937,5 +944,8 @@ const char *nm_platform_addr_flags2str (unsigned flags, char *buf, gsize len);
 const char *nm_platform_route_scope2str (int scope, char *buf, gsize len);
 
 int nm_platform_ip_address_cmp_expiry (const NMPlatformIPAddress *a, const NMPlatformIPAddress *b);
+
+gboolean nm_platform_ethtool_set_wake_on_lan (NMPlatform *self, const char *ifname, NMSettingWiredWakeOnLan wol, const char *wol_password);
+gboolean nm_platform_ethtool_get_link_speed (NMPlatform *self, const char *ifname, guint32 *out_speed);
 
 #endif /* __NETWORKMANAGER_PLATFORM_H__ */

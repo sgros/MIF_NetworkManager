@@ -20,6 +20,8 @@
 
 #include "nm-default.h"
 
+#include "nm-platform.h"
+
 #include <stdlib.h>
 #include <errno.h>
 #include <unistd.h>
@@ -32,14 +34,13 @@
 #include <linux/if_tun.h>
 #include <linux/if_tunnel.h>
 
-#include "NetworkManagerUtils.h"
 #include "nm-utils.h"
-#include "nm-platform.h"
+#include "nm-core-internal.h"
+
+#include "nm-core-utils.h"
+#include "nm-enum-types.h"
 #include "nm-platform-utils.h"
 #include "nmp-object.h"
-#include "NetworkManagerUtils.h"
-#include "nm-enum-types.h"
-#include "nm-core-internal.h"
 
 /*****************************************************************************/
 
@@ -2418,6 +2419,44 @@ _to_string_dev (NMPlatform *self, int ifindex, char *buf, size_t size)
 	return buf;
 }
 
+#define TO_STRING_IFA_FLAGS_BUF_SIZE 256
+
+static const char *
+_to_string_ifa_flags (guint32 ifa_flags, char *buf, gsize size)
+{
+#define S_FLAGS_PREFIX " flags "
+	nm_assert (buf && size >= TO_STRING_IFA_FLAGS_BUF_SIZE && size > NM_STRLEN (S_FLAGS_PREFIX));
+
+	if (!ifa_flags)
+		buf[0] = '\0';
+	else {
+		nm_platform_addr_flags2str (ifa_flags, &buf[NM_STRLEN (S_FLAGS_PREFIX)], size - NM_STRLEN (S_FLAGS_PREFIX));
+		if (buf[NM_STRLEN (S_FLAGS_PREFIX)] == '\0')
+			buf[0] = '\0';
+		else
+			memcpy (buf, S_FLAGS_PREFIX, NM_STRLEN (S_FLAGS_PREFIX));
+	}
+	return buf;
+}
+
+/******************************************************************/
+
+gboolean
+nm_platform_ethtool_set_wake_on_lan (NMPlatform *self, const char *ifname, NMSettingWiredWakeOnLan wol, const char *wol_password)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	return nmp_utils_ethtool_set_wake_on_lan (ifname, wol, wol_password);
+}
+
+gboolean
+nm_platform_ethtool_get_link_speed (NMPlatform *self, const char *ifname, guint32 *out_speed)
+{
+	_CHECK_SELF (self, klass, FALSE);
+
+	return nmp_utils_ethtool_get_link_speed (ifname, out_speed);
+}
+
 /******************************************************************/
 
 void
@@ -2465,6 +2504,7 @@ nm_platform_ip4_address_add (NMPlatform *self,
                              in_addr_t peer_address,
                              guint32 lifetime,
                              guint32 preferred,
+                             guint32 flags,
                              const char *label)
 {
 	_CHECK_SELF (self, klass, FALSE);
@@ -2485,12 +2525,13 @@ nm_platform_ip4_address_add (NMPlatform *self,
 		addr.timestamp = 0; /* set it at zero, which to_string will treat as *now* */
 		addr.lifetime = lifetime;
 		addr.preferred = preferred;
+		addr.n_ifa_flags = flags;
 		if (label)
 			g_strlcpy (addr.label, label, sizeof (addr.label));
 
 		_LOGD ("address: adding or updating IPv4 address: %s", nm_platform_ip4_address_to_string (&addr, NULL, 0));
 	}
-	return klass->ip4_address_add (self, ifindex, address, plen, peer_address, lifetime, preferred, label);
+	return klass->ip4_address_add (self, ifindex, address, plen, peer_address, lifetime, preferred, flags, label);
 }
 
 gboolean
@@ -2679,7 +2720,9 @@ nm_platform_ip4_address_sync (NMPlatform *self, int ifindex, const GArray *known
 		                             now, ADDRESS_LIFETIME_PADDING, &lifetime, &preferred))
 			continue;
 
-		if (!nm_platform_ip4_address_add (self, ifindex, known_address->address, known_address->plen, known_address->peer_address, lifetime, preferred, known_address->label))
+		if (!nm_platform_ip4_address_add (self, ifindex, known_address->address, known_address->plen,
+		                                  known_address->peer_address, lifetime, preferred,
+		                                  0, known_address->label))
 			return FALSE;
 
 		if (out_added_addresses) {
@@ -3396,6 +3439,7 @@ nm_platform_lnk_vxlan_to_string (const NMPlatformLnkVxlan *lnk, char *buf, gsize
 const char *
 nm_platform_ip4_address_to_string (const NMPlatformIP4Address *address, char *buf, gsize len)
 {
+	char s_flags[TO_STRING_IFA_FLAGS_BUF_SIZE];
 	char s_address[INET_ADDRSTRLEN];
 	char s_peer[INET_ADDRSTRLEN];
 	char str_dev[TO_STRING_DEV_BUF_SIZE];
@@ -3433,10 +3477,11 @@ nm_platform_ip4_address_to_string (const NMPlatformIP4Address *address, char *bu
 	str_time_p = _lifetime_summary_to_string (now, address->timestamp, address->preferred, address->lifetime, str_time, sizeof (str_time));
 
 	g_snprintf (buf, len,
-	            "%s/%d lft %s pref %s%s%s%s%s src %s",
+	            "%s/%d lft %s pref %s%s%s%s%s%s src %s",
 	            s_address, address->plen, str_lft_p, str_pref_p, str_time_p,
 	            str_peer ? str_peer : "",
 	            str_dev,
+	            _to_string_ifa_flags (address->n_ifa_flags, s_flags, sizeof (s_flags)),
 	            str_label,
 	            source_to_string (address->source));
 	g_free (str_peer);
@@ -3507,8 +3552,7 @@ NM_UTILS_ENUM2STR_DEFINE (nm_platform_route_scope2str, int,
 const char *
 nm_platform_ip6_address_to_string (const NMPlatformIP6Address *address, char *buf, gsize len)
 {
-#define S_FLAGS_PREFIX " flags "
-	char s_flags[256];
+	char s_flags[TO_STRING_IFA_FLAGS_BUF_SIZE];
 	char s_address[INET6_ADDRSTRLEN];
 	char s_peer[INET6_ADDRSTRLEN];
 	char str_lft[30], str_pref[30], str_time[50];
@@ -3529,12 +3573,6 @@ nm_platform_ip6_address_to_string (const NMPlatformIP6Address *address, char *bu
 
 	_to_string_dev (NULL, address->ifindex, str_dev, sizeof (str_dev));
 
-	nm_platform_addr_flags2str (address->n_ifa_flags, &s_flags[NM_STRLEN (S_FLAGS_PREFIX)], sizeof (s_flags) - NM_STRLEN (S_FLAGS_PREFIX));
-	if (s_flags[NM_STRLEN (S_FLAGS_PREFIX)] == '\0')
-		s_flags[0] = '\0';
-	else
-		memcpy (s_flags, S_FLAGS_PREFIX, NM_STRLEN (S_FLAGS_PREFIX));
-
 	str_lft_p = _lifetime_to_string (address->timestamp,
 	                                 address->lifetime ? address->lifetime : NM_PLATFORM_LIFETIME_PERMANENT,
 	                                 now, str_lft, sizeof (str_lft)),
@@ -3550,7 +3588,7 @@ nm_platform_ip6_address_to_string (const NMPlatformIP6Address *address, char *bu
 	            s_address, address->plen, str_lft_p, str_pref_p, str_time_p,
 	            str_peer ? str_peer : "",
 	            str_dev,
-	            s_flags,
+	            _to_string_ifa_flags (address->n_ifa_flags, s_flags, sizeof (s_flags)),
 	            source_to_string (address->source));
 	g_free (str_peer);
 	return buf;
@@ -3875,6 +3913,7 @@ nm_platform_ip4_address_cmp (const NMPlatformIP4Address *a, const NMPlatformIP4A
 	_CMP_FIELD (a, b, timestamp);
 	_CMP_FIELD (a, b, lifetime);
 	_CMP_FIELD (a, b, preferred);
+	_CMP_FIELD (a, b, n_ifa_flags);
 	_CMP_FIELD_STR (a, b, label);
 	return 0;
 }

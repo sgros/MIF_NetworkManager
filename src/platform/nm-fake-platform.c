@@ -20,6 +20,8 @@
 
 #include "nm-default.h"
 
+#include "nm-fake-platform.h"
+
 #include <errno.h>
 #include <unistd.h>
 #include <netinet/icmp6.h>
@@ -27,9 +29,9 @@
 #include <linux/rtnetlink.h>
 
 #include "nm-utils.h"
+
+#include "nm-core-utils.h"
 #include "nmp-object.h"
-#include "NetworkManagerUtils.h"
-#include "nm-fake-platform.h"
 
 #include "nm-test-utils.h"
 
@@ -888,6 +890,7 @@ ip4_address_add (NMPlatform *platform,
                  in_addr_t peer_addr,
                  guint32 lifetime,
                  guint32 preferred,
+                 guint32 flags,
                  const char *label)
 {
 	NMFakePlatformPrivate *priv = NM_FAKE_PLATFORM_GET_PRIVATE (platform);
@@ -903,6 +906,7 @@ ip4_address_add (NMPlatform *platform,
 	address.timestamp = nm_utils_get_monotonic_timestamp_s ();
 	address.lifetime = lifetime;
 	address.preferred = preferred;
+	address.n_ifa_flags = flags;
 	if (label)
 		g_strlcpy (address.label, label, sizeof (address.label));
 

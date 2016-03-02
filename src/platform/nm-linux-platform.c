@@ -19,6 +19,8 @@
  */
 #include "nm-default.h"
 
+#include "nm-linux-platform.h"
+
 #include <errno.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -46,18 +48,15 @@
 #include <gudev/gudev.h>
 #include <sched.h>
 
-#include "nm-core-internal.h"
-#include "NetworkManagerUtils.h"
-#include "nm-linux-platform.h"
-#include "nm-platform-utils.h"
-#include "NetworkManagerUtils.h"
 #include "nm-utils.h"
+#include "nm-core-internal.h"
+#include "nm-setting-vlan.h"
+
+#include "nm-core-utils.h"
+#include "nmp-object.h"
+#include "nm-platform-utils.h"
 #include "wifi/wifi-utils.h"
 #include "wifi/wifi-utils-wext.h"
-#include "nmp-object.h"
-
-/* This is only included for the translation of VLAN flags */
-#include "nm-setting-vlan.h"
 
 #define VLAN_FLAG_MVRP 0x8
 
@@ -1683,11 +1682,9 @@ _new_from_nl_addr (struct nlmsghdr *nlh, gboolean id_only)
 
 	obj->ip_address.source = NM_IP_CONFIG_SOURCE_KERNEL;
 
-	if (!is_v4) {
-		obj->ip6_address.n_ifa_flags = tb[IFA_FLAGS]
-		                               ? nla_get_u32 (tb[IFA_FLAGS])
-		                               : ifa->ifa_flags;
-	}
+	obj->ip_address.n_ifa_flags = tb[IFA_FLAGS]
+	                              ? nla_get_u32 (tb[IFA_FLAGS])
+	                              : ifa->ifa_flags;
 
 	if (is_v4) {
 		if (tb[IFA_LABEL]) {
@@ -2235,7 +2232,7 @@ _nl_msg_new_address (int nlmsg_type,
 		NLA_PUT (msg, IFA_CACHEINFO, sizeof(ca), &ca);
 	}
 
-	if (flags & ~0xFF) {
+	if (flags & ~((guint32) 0xFF)) {
 		/* only set the IFA_FLAGS attribute, if they actually contain additional
 		 * flags that are not already set to am.ifa_flags.
 		 *
@@ -2537,8 +2534,8 @@ sysctl_set (NMPlatform *platform, const char *path, const char *value)
 
 static GSList *sysctl_clear_cache_list;
 
-void
-_nm_linux_platform_sysctl_clear_cache (void)
+static void
+_nm_logging_clear_platform_logging_cache_impl (void)
 {
 	while (sysctl_clear_cache_list) {
 		NMLinuxPlatformPrivate *priv = NM_LINUX_PLATFORM_GET_PRIVATE (sysctl_clear_cache_list->data);
@@ -2558,6 +2555,7 @@ _log_dbg_sysctl_get_impl (NMPlatform *platform, const char *path, const char *co
 	const char *prev_value = NULL;
 
 	if (!priv->sysctl_get_prev_values) {
+		_nm_logging_clear_platform_logging_cache = _nm_logging_clear_platform_logging_cache_impl;
 		sysctl_clear_cache_list = g_slist_prepend (sysctl_clear_cache_list, platform);
 		priv->sysctl_get_prev_values = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 	} else
@@ -5313,6 +5311,7 @@ ip4_address_add (NMPlatform *platform,
                  in_addr_t peer_addr,
                  guint32 lifetime,
                  guint32 preferred,
+                 guint32 flags,
                  const char *label)
 {
 	NMPObject obj_id;
@@ -5325,7 +5324,7 @@ ip4_address_add (NMPlatform *platform,
 	                             &addr,
 	                             plen,
 	                             &peer_addr,
-	                             0,
+	                             flags,
 	                             nmp_utils_ip4_address_is_link_local (addr) ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE,
 	                             lifetime,
 	                             preferred,
