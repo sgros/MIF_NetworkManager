@@ -48,6 +48,15 @@
 #include "nm-dhcp4-config.h"
 #include "nm-dhcp6-config.h"
 
+#define _NMLOG_PREFIX_NAME    "policy"
+#define _NMLOG(level, domain, ...) \
+    G_STMT_START { \
+        nm_log ((level), (domain), \
+                "%s" _NM_UTILS_MACRO_FIRST (__VA_ARGS__), \
+                _NMLOG_PREFIX_NAME": " \
+                _NM_UTILS_MACRO_REST (__VA_ARGS__)); \
+    } G_STMT_END
+
 typedef struct {
 	NMManager *manager;
 	NMFirewallManager *firewall_manager;
@@ -119,43 +128,26 @@ get_best_ip6_device (NMPolicy *self, gboolean fully_activated)
 
 #define FALLBACK_HOSTNAME4 "localhost.localdomain"
 
-static gboolean
-set_system_hostname (const char *new_hostname, const char *msg)
+static void settings_set_hostname_cb (const char *hostname,
+                                      gboolean result,
+                                      gpointer user_data)
 {
-	char old_hostname[HOST_NAME_MAX + 1];
-	const char *name;
-	int ret;
+	int ret = 0;
 
-	if (new_hostname)
-		g_warn_if_fail (strlen (new_hostname));
+	if (!result) {
+		ret = sethostname (hostname, strlen (hostname));
+		if (ret != 0) {
+			int errsv = errno;
 
-	old_hostname[HOST_NAME_MAX] = '\0';
-	errno = 0;
-	ret = gethostname (old_hostname, HOST_NAME_MAX);
-	if (ret != 0) {
-		nm_log_warn (LOGD_DNS, "couldn't get the system hostname: (%d) %s",
-		             errno, strerror (errno));
-	} else {
-		/* Don't set the hostname if it isn't actually changing */
-		if (   (new_hostname && !strcmp (old_hostname, new_hostname))
-		       || (!new_hostname && !strcmp (old_hostname, FALLBACK_HOSTNAME4)))
-			return FALSE;
+			_LOGW (LOGD_DNS, "couldn't set the system hostname to '%s': (%d) %s",
+			       hostname, errsv, strerror (errsv));
+			if (errsv == EPERM)
+				_LOGW (LOGD_DNS, "you should use hostnamed when systemd hardening is in effect!");
+		}
 	}
 
-	name = (new_hostname && strlen (new_hostname)) ? new_hostname : FALLBACK_HOSTNAME4;
-
-	nm_log_info (LOGD_DNS, "Setting system hostname to '%s' (%s)", name, msg);
-	ret = sethostname (name, strlen (name));
-	if (ret != 0) {
-		int errsv = errno;
-
-		nm_log_warn (LOGD_DNS, "couldn't set the system hostname to '%s': (%d) %s",
-		             name, errsv, strerror (errsv));
-		if (errsv == EPERM)
-			nm_log_warn (LOGD_DNS, "You should use hostnamed when systemd hardening is in effect!");
-	}
-
-	return (ret == 0);
+	if (!ret)
+		nm_dispatcher_call (DISPATCHER_ACTION_HOSTNAME, NULL, NULL, NULL, NULL, NULL, NULL);
 }
 
 static void
@@ -164,6 +156,9 @@ _set_hostname (NMPolicy *policy,
                const char *msg)
 {
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (policy);
+	char old_hostname[HOST_NAME_MAX + 1];
+	const char *name;
+	int ret;
 
 	/* The incoming hostname *can* be NULL, which will get translated to
 	 * 'localhost.localdomain' or such in the hostname policy code, but we
@@ -195,10 +190,41 @@ _set_hostname (NMPolicy *policy,
 	priv->cur_hostname = g_strdup (new_hostname);
 	priv->hostname_changed = TRUE;
 
+	/* Notify the DNS manager of the hostname change so that the domain part, if
+	 * present, can be added to the search list.
+	 */
 	nm_dns_manager_set_hostname (priv->dns_manager, priv->cur_hostname);
 
-	if (set_system_hostname (priv->cur_hostname, msg))
-		nm_dispatcher_call (DISPATCHER_ACTION_HOSTNAME, NULL, NULL, NULL, NULL, NULL, NULL);
+	 /* Finally, set kernel hostname */
+
+	if (!priv->cur_hostname)
+		name = FALLBACK_HOSTNAME4;
+	else if (!priv->cur_hostname[0]) {
+		g_warn_if_reached ();
+		name = FALLBACK_HOSTNAME4;
+	} else
+		name = priv->cur_hostname;
+
+	old_hostname[HOST_NAME_MAX] = '\0';
+	errno = 0;
+	ret = gethostname (old_hostname, HOST_NAME_MAX);
+	if (ret != 0) {
+		_LOGW (LOGD_DNS, "couldn't get the system hostname: (%d) %s",
+		       errno, strerror (errno));
+	} else {
+		/* Don't set the hostname if it isn't actually changing */
+		if (nm_streq (name, old_hostname))
+			return;
+	}
+
+	_LOGI (LOGD_DNS, "setting system hostname to '%s' (%s)", name, msg);
+
+	/* Ask NMSettings to update the transient hostname using its
+	 * systemd-hostnamed proxy */
+	nm_settings_set_transient_hostname (priv->settings,
+	                                    name,
+	                                    settings_set_hostname_cb,
+	                                    NULL);
 }
 
 static void
@@ -291,8 +317,8 @@ update_system_hostname (NMPolicy *policy, NMDevice *best4, NMDevice *best6)
 						return;
 					}
 				}
-				nm_log_warn (LOGD_DNS, "DHCPv4-provided hostname '%s' looks invalid; ignoring it",
-				             dhcp_hostname);
+				_LOGW (LOGD_DNS, "DHCPv4-provided hostname '%s' looks invalid; ignoring it",
+				       dhcp_hostname);
 			}
 		}
 	} else if (best6) {
@@ -310,8 +336,8 @@ update_system_hostname (NMPolicy *policy, NMDevice *best4, NMDevice *best6)
 						return;
 					}
 				}
-				nm_log_warn (LOGD_DNS, "DHCPv6-provided hostname '%s' looks invalid; ignoring it",
-				             dhcp_hostname);
+				_LOGW (LOGD_DNS, "DHCPv6-provided hostname '%s' looks invalid; ignoring it",
+				       dhcp_hostname);
 			}
 		}
 	}
@@ -470,8 +496,8 @@ update_ip4_routing (NMPolicy *policy, gboolean force_update)
 
 	priv->default_device4 = default_device;
 	connection = nm_active_connection_get_applied_connection (best_ac);
-	nm_log_info (LOGD_CORE, "Policy set '%s' (%s) as default for IPv4 routing and DNS.",
-	             nm_connection_get_id (connection), ip_iface);
+	_LOGI (LOGD_CORE, "set '%s' (%s) as default for IPv4 routing and DNS",
+	       nm_connection_get_id (connection), ip_iface);
 	g_object_notify (G_OBJECT (policy), NM_POLICY_DEFAULT_IP4_DEVICE);
 }
 
@@ -565,8 +591,8 @@ update_ip6_routing (NMPolicy *policy, gboolean force_update)
 
 	priv->default_device6 = default_device6;
 	connection = nm_active_connection_get_applied_connection (best_ac);
-	nm_log_info (LOGD_CORE, "Policy set '%s' (%s) as default for IPv6 routing and DNS.",
-	             nm_connection_get_id (connection), ip_iface);
+	_LOGI (LOGD_CORE, "set '%s' (%s) as default for IPv6 routing and DNS",
+	       nm_connection_get_id (connection), ip_iface);
 	g_object_notify (G_OBJECT (policy), NM_POLICY_DEFAULT_IP6_DEVICE);
 }
 
@@ -687,8 +713,8 @@ auto_activate_device (gpointer user_data)
 		GError *error = NULL;
 		NMAuthSubject *subject;
 
-		nm_log_info (LOGD_DEVICE, "Auto-activating connection '%s'.",
-		             nm_settings_connection_get_id (best_connection));
+		_LOGI (LOGD_DEVICE, "auto-activating connection '%s'",
+		       nm_settings_connection_get_id (best_connection));
 		subject = nm_auth_subject_new_internal ();
 		if (!nm_manager_activate_connection (priv->manager,
 		                                     best_connection,
@@ -696,10 +722,10 @@ auto_activate_device (gpointer user_data)
 		                                     data->device,
 		                                     subject,
 		                                     &error)) {
-			nm_log_info (LOGD_DEVICE, "Connection '%s' auto-activation failed: (%d) %s",
-			             nm_settings_connection_get_id (best_connection),
-			             error ? error->code : -1,
-			             error ? error->message : "(none)");
+			_LOGI (LOGD_DEVICE, "connection '%s' auto-activation failed: (%d) %s",
+			       nm_settings_connection_get_id (best_connection),
+			       error->code,
+			       error->message);
 			g_error_free (error);
 		}
 		g_object_unref (subject);
@@ -774,9 +800,9 @@ process_secondaries (NMPolicy *policy,
 				continue;
 
 			if (connected) {
-				nm_log_dbg (LOGD_DEVICE, "Secondary connection '%s' SUCCEEDED; active path '%s'",
-				            nm_active_connection_get_settings_connection_id (active),
-				            nm_exported_object_get_path (NM_EXPORTED_OBJECT (active)));
+				_LOGD (LOGD_DEVICE, "secondary connection '%s' succeeded; active path '%s'",
+				       nm_active_connection_get_settings_connection_id (active),
+				       nm_exported_object_get_path (NM_EXPORTED_OBJECT (active)));
 
 				/* Secondary connection activated */
 				secondary_data->secondaries = g_slist_remove (secondary_data->secondaries, secondary_active);
@@ -790,9 +816,9 @@ process_secondaries (NMPolicy *policy,
 					break;
 				}
 			} else {
-				nm_log_dbg (LOGD_DEVICE, "Secondary connection '%s' FAILED; active path '%s'",
-				            nm_active_connection_get_settings_connection_id (active),
-				            nm_exported_object_get_path (NM_EXPORTED_OBJECT (active)));
+				_LOGD (LOGD_DEVICE, "secondary connection '%s' failed; active path '%s'",
+				       nm_active_connection_get_settings_connection_id (active),
+				       nm_exported_object_get_path (NM_EXPORTED_OBJECT (active)));
 
 				/* Secondary connection failed -> do not watch other connections */
 				priv->pending_secondaries = g_slist_remove (priv->pending_secondaries, secondary_data);
@@ -825,10 +851,10 @@ reset_autoconnect_all (NMPolicy *policy, NMDevice *device)
 	GSList *connections, *iter;
 
 	if (device) {
-		nm_log_dbg (LOGD_DEVICE, "Re-enabling autoconnect for all connections on %s",
-		            nm_device_get_iface (device));
+		_LOGD (LOGD_DEVICE, "re-enabling autoconnect for all connections on %s",
+		       nm_device_get_iface (device));
 	} else
-		nm_log_dbg (LOGD_DEVICE, "Re-enabling autoconnect for all connections");
+		_LOGD (LOGD_DEVICE, "re-enabling autoconnect for all connections");
 
 	connections = nm_settings_get_connections (priv->settings);
 	for (iter = connections; iter; iter = g_slist_next (iter)) {
@@ -846,7 +872,7 @@ reset_autoconnect_for_failed_secrets (NMPolicy *policy)
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (policy);
 	GSList *connections, *iter;
 
-	nm_log_dbg (LOGD_DEVICE, "Re-enabling autoconnect for all connections with failed secrets");
+	_LOGD (LOGD_DEVICE, "re-enabling autoconnect for all connections with failed secrets");
 
 	connections = nm_settings_get_connections (priv->settings);
 	for (iter = connections; iter; iter = g_slist_next (iter)) {
@@ -866,8 +892,8 @@ block_autoconnect_for_device (NMPolicy *policy, NMDevice *device)
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (policy);
 	GSList *connections, *iter;
 
-	nm_log_dbg (LOGD_DEVICE, "Blocking autoconnect for all connections on %s",
-	            nm_device_get_iface (device));
+	_LOGD (LOGD_DEVICE, "blocking autoconnect for all connections on %s",
+	       nm_device_get_iface (device));
 
 	/* NMDevice keeps its own autoconnect-able-ness state; we only need to
 	 * explicitly block connections for software devices, where the NMDevice
@@ -1062,14 +1088,14 @@ activate_secondary_connections (NMPolicy *policy,
 
 		settings_con = nm_settings_get_connection_by_uuid (priv->settings, sec_uuid);
 		if (!settings_con) {
-			nm_log_warn (LOGD_DEVICE, "Secondary connection '%s' auto-activation failed: The connection doesn't exist.",
-			             sec_uuid);
+			_LOGW (LOGD_DEVICE, "secondary connection '%s' auto-activation failed: The connection doesn't exist.",
+			       sec_uuid);
 			success = FALSE;
 			break;
 		}
 		if (!nm_connection_is_type (NM_CONNECTION (settings_con), NM_SETTING_VPN_SETTING_NAME)) {
-			nm_log_warn (LOGD_DEVICE, "Secondary connection '%s (%s)' auto-activation failed: The connection is not a VPN.",
-			             nm_settings_connection_get_id (settings_con), sec_uuid);
+			_LOGW (LOGD_DEVICE, "secondary connection '%s (%s)' auto-activation failed: The connection is not a VPN.",
+			       nm_settings_connection_get_id (settings_con), sec_uuid);
 			success = FALSE;
 			break;
 		}
@@ -1077,9 +1103,9 @@ activate_secondary_connections (NMPolicy *policy,
 		req = nm_device_get_act_request (device);
 		g_assert (req);
 
-		nm_log_dbg (LOGD_DEVICE, "Activating secondary connection '%s (%s)' for base connection '%s (%s)'",
-		            nm_settings_connection_get_id (settings_con), sec_uuid,
-		            nm_connection_get_id (connection), nm_connection_get_uuid (connection));
+		_LOGD (LOGD_DEVICE, "activating secondary connection '%s (%s)' for base connection '%s (%s)'",
+		       nm_settings_connection_get_id (settings_con), sec_uuid,
+		       nm_connection_get_id (connection), nm_connection_get_uuid (connection));
 		ac = nm_manager_activate_connection (priv->manager,
 		                                     settings_con,
 		                                     nm_exported_object_get_path (NM_EXPORTED_OBJECT (req)),
@@ -1089,10 +1115,10 @@ activate_secondary_connections (NMPolicy *policy,
 		if (ac)
 			secondary_ac_list = g_slist_append (secondary_ac_list, g_object_ref (ac));
 		else {
-			nm_log_warn (LOGD_DEVICE, "Secondary connection '%s (%s)' auto-activation failed: (%d) %s",
-			             nm_settings_connection_get_id (settings_con), sec_uuid,
-			             error ? error->code : 0,
-			             (error && error->message) ? error->message : "unknown");
+			_LOGW (LOGD_DEVICE, "secondary connection '%s (%s)' auto-activation failed: (%d) %s",
+			       nm_settings_connection_get_id (settings_con), sec_uuid,
+			       error->code,
+			       error->message);
 			g_clear_error (&error);
 			success = FALSE;
 			break;
@@ -1136,19 +1162,19 @@ device_state_changed (NMDevice *device,
 			guint32 tries = nm_settings_connection_get_autoconnect_retries (connection);
 
 			if (reason == NM_DEVICE_STATE_REASON_NO_SECRETS) {
-				nm_log_dbg (LOGD_DEVICE, "Connection '%s' now blocked from autoconnect due to no secrets",
-				            nm_settings_connection_get_id (connection));
+				_LOGD (LOGD_DEVICE, "connection '%s' now blocked from autoconnect due to no secrets",
+				       nm_settings_connection_get_id (connection));
 
 				nm_settings_connection_set_autoconnect_blocked_reason (connection, NM_DEVICE_STATE_REASON_NO_SECRETS);
 			} else if (tries > 0) {
-				nm_log_dbg (LOGD_DEVICE, "Connection '%s' failed to autoconnect; %d tries left",
-				            nm_settings_connection_get_id (connection), tries);
+				_LOGD (LOGD_DEVICE, "connection '%s' failed to autoconnect; %d tries left",
+				       nm_settings_connection_get_id (connection), tries);
 				nm_settings_connection_set_autoconnect_retries (connection, tries - 1);
 			}
 
 			if (nm_settings_connection_get_autoconnect_retries (connection) == 0) {
-				nm_log_info (LOGD_DEVICE, "Disabling autoconnect for connection '%s'.",
-				             nm_settings_connection_get_id (connection));
+				_LOGI (LOGD_DEVICE, "disabling autoconnect for connection '%s'.",
+				       nm_settings_connection_get_id (connection));
 				/* Schedule a handler to reset retries count */
 				if (!priv->reset_retries_id) {
 					gint32 retry_time = nm_settings_connection_get_autoconnect_retry_time (connection);
@@ -1200,8 +1226,8 @@ device_state_changed (NMDevice *device,
 			} else {
 				if (connection) {
 					/* The connection was deactivated, so block just this connection */
-					nm_log_dbg (LOGD_DEVICE, "Blocking autoconnect of connection '%s' by user request",
-					            nm_settings_connection_get_id (connection));
+					_LOGD (LOGD_DEVICE, "blocking autoconnect of connection '%s' by user request",
+					       nm_settings_connection_get_id (connection));
 					nm_settings_connection_set_autoconnect_blocked_reason (connection,
 					                                                       NM_DEVICE_STATE_REASON_USER_REQUESTED);
 				}
@@ -1492,9 +1518,9 @@ vpn_connection_retry_after_failure (NMVpnConnection *vpn, NMPolicy *policy)
 	                                     NULL,
 	                                     nm_active_connection_get_subject (ac),
 	                                     &error)) {
-		nm_log_warn (LOGD_DEVICE, "VPN '%s' reconnect failed: %s",
-		             nm_settings_connection_get_id (connection),
-		             error->message ? error->message : "unknown");
+		_LOGW (LOGD_DEVICE, "VPN '%s' reconnect failed: %s",
+		       nm_settings_connection_get_id (connection),
+		       error->message ? error->message : "unknown");
 		g_clear_error (&error);
 	}
 }
@@ -1607,8 +1633,8 @@ dns_config_changed (NMDnsManager *dns_manager, gpointer user_data)
 	if (priv->lookup_addr) {
 		char *str = NULL;
 
-		nm_log_dbg (LOGD_DNS, "restarting reverse-lookup thread for address %s",
-		            (str = g_inet_address_to_string (priv->lookup_addr)));
+		_LOGD (LOGD_DNS, "restarting reverse-lookup thread for address %s",
+		       (str = g_inet_address_to_string (priv->lookup_addr)));
 		g_free (str);
 
 		priv->lookup_cancellable = g_cancellable_new ();
@@ -1671,10 +1697,10 @@ _deactivate_if_active (NMManager *manager, NMSettingsConnection *connection)
 			                                       nm_exported_object_get_path (NM_EXPORTED_OBJECT (ac)),
 			                                       NM_DEVICE_STATE_REASON_CONNECTION_REMOVED,
 			                                       &error)) {
-				nm_log_warn (LOGD_DEVICE, "Connection '%s' disappeared, but error deactivating it: (%d) %s",
-					         nm_settings_connection_get_id (connection),
-					         error ? error->code : -1,
-					         error ? error->message : "(unknown)");
+				_LOGW (LOGD_DEVICE, "connection '%s' disappeared, but error deactivating it: (%d) %s",
+				       nm_settings_connection_get_id (connection),
+				       error ? error->code : -1,
+				       error ? error->message : "(unknown)");
 				g_clear_error (&error);
 			}
 		}

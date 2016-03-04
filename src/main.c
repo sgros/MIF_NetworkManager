@@ -217,8 +217,7 @@ print_config (NMConfigCmdLineOptions *config_cli)
 
 	config = nm_config_new (config_cli, NULL, &error);
 	if (config == NULL) {
-		fprintf (stderr, _("Failed to read configuration: %s\n"),
-		         (error && error->message) ? error->message : _("unknown"));
+		fprintf (stderr, _("Failed to read configuration: %s\n"), error->message);
 		return 7;
 	}
 
@@ -360,9 +359,8 @@ main (int argc, char *argv[])
 	nm_config_cmd_line_options_free (config_cli);
 	config_cli = NULL;
 	if (config == NULL) {
-		fprintf (stderr, _("Failed to read configuration: (%d) %s\n"),
-		         error ? error->code : -1,
-		         (error && error->message) ? error->message : _("unknown"));
+		fprintf (stderr, _("Failed to read configuration: %s\n"),
+		         error->message);
 		exit (1);
 	}
 
@@ -414,10 +412,9 @@ main (int argc, char *argv[])
 
 	/* Parse the state file */
 	if (!parse_state_file (global_opt.state_file, &net_enabled, &wifi_enabled, &wwan_enabled, &error)) {
-		nm_log_err (LOGD_CORE, "State file %s parsing failed: (%d) %s",
+		nm_log_err (LOGD_CORE, "State file %s parsing failed: %s",
 		            global_opt.state_file,
-		            error ? error->code : -1,
-		            (error && error->message) ? error->message : _("unknown"));
+		            error->message);
 		/* Not a hard failure */
 	}
 	g_clear_error (&error);

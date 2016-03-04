@@ -513,7 +513,7 @@ activate_info_complete (ActivateInfo *info,
 		                  error,
 		                  info->user_data);
 	} else if (error)
-		g_warning ("Device activation failed: (%d) %s", error->code, error->message);
+		g_warning ("Device activation failed: %s", error->message);
 
 	priv->pending_activations = g_slist_remove (priv->pending_activations, info);
 }
@@ -812,8 +812,8 @@ nm_client_deactivate_connection (NMClient *client, NMActiveConnection *active)
 	                        DBUS_TYPE_G_OBJECT_PATH, path,
 	                        G_TYPE_INVALID,
 	                        G_TYPE_INVALID)) {
-		g_warning ("Could not deactivate connection '%s': %s", 
-		           path, error ? error->message : "(unknown)");
+		g_warning ("Could not deactivate connection '%s': %s",
+		           path, NM_G_ERROR_MSG (error));
 		g_clear_error (&error);
 	}
 }
@@ -1342,7 +1342,7 @@ free_devices (NMClient *client, gboolean in_dispose)
 
 	if (all_devices && all_devices->len > 0)
 		devices = all_devices;
-	else if (devices && devices->len > 0)
+	else if (real_devices && real_devices->len > 0)
 		devices = real_devices;
 
 	if (real_devices && devices != real_devices) {
@@ -1839,8 +1839,8 @@ constructed (GObject *object)
 	GError *error = NULL;
 
 	if (!nm_utils_init (&error)) {
-		g_warning ("Couldn't initilize nm-utils/crypto system: %d %s",
-		           error->code, error->message);
+		g_warning ("Couldn't initilize nm-utils/crypto system: %s",
+		           error->message);
 		g_clear_error (&error);
 	}
 

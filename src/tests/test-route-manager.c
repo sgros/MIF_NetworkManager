@@ -77,15 +77,16 @@ setup_dev1_ip4 (int ifindex)
 
 	/* Add some route outside of route manager. The route manager
 	 * should get rid of it upon sync. */
-	nm_platform_ip4_route_add (NM_PLATFORM_GET,
-	                           route.ifindex,
-	                           NM_IP_CONFIG_SOURCE_USER,
-	                           nmtst_inet4_from_string ("9.0.0.0"),
-	                           8,
-	                           INADDR_ANY,
-	                           0,
-	                           10,
-	                           route.mss);
+	if (!nm_platform_ip4_route_add (NM_PLATFORM_GET,
+	                                route.ifindex,
+	                                NM_IP_CONFIG_SOURCE_USER,
+	                                nmtst_inet4_from_string ("9.0.0.0"),
+	                                8,
+	                                INADDR_ANY,
+	                                0,
+	                                10,
+	                                route.mss))
+		g_assert_not_reached ();
 
 	route.source = NM_IP_CONFIG_SOURCE_USER;
 	inet_pton (AF_INET, "6.6.6.0", &route.network);
@@ -422,14 +423,15 @@ setup_dev1_ip6 (int ifindex)
 
 	/* Add some route outside of route manager. The route manager
 	 * should get rid of it upon sync. */
-	nm_platform_ip6_route_add (NM_PLATFORM_GET,
-	                           ifindex,
-	                           NM_IP_CONFIG_SOURCE_USER,
-	                           *nmtst_inet6_from_string ("2001:db8:8088::"),
-	                           48,
-	                           in6addr_any,
-	                           10,
-	                           0);
+	if (!nm_platform_ip6_route_add (NM_PLATFORM_GET,
+	                                ifindex,
+	                                NM_IP_CONFIG_SOURCE_USER,
+	                                *nmtst_inet6_from_string ("2001:db8:8088::"),
+	                                48,
+	                                in6addr_any,
+	                                10,
+	                                0))
+		g_assert_not_reached ();
 
 	route = nmtst_platform_ip6_route_full ("2001:db8:8086::",
 	                                       48,

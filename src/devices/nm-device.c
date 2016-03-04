@@ -2898,7 +2898,7 @@ nm_device_generate_connection (NMDevice *self, NMDevice *master)
 		                                               &error))
 		{
 			_LOGE (LOGD_DEVICE, "master device '%s' failed to update slave connection: %s",
-			       nm_device_get_iface (master), error ? error->message : "(unknown error)");
+			       nm_device_get_iface (master), error->message);
 			g_error_free (error);
 			g_object_unref (connection);
 			return NULL;
@@ -3179,7 +3179,7 @@ recheck_available (gpointer user_data)
 	}
 
 	if (new_state > NM_DEVICE_STATE_UNKNOWN) {
-		_LOGD (LOGD_DEVICE, "device is %savailable, %s %s",
+		_LOGD (LOGD_DEVICE, "is %savailable, %s %s",
 			   now_available ? "" : "not ",
 			   new_state == NM_DEVICE_STATE_UNAVAILABLE ? "no change required for" : "will transition to",
 			   state_to_string (new_state == NM_DEVICE_STATE_UNAVAILABLE ? state : new_state));
@@ -6786,7 +6786,7 @@ start_sharing (NMDevice *self, NMIP4Config *config)
 
 	if (!nm_dnsmasq_manager_start (priv->dnsmasq_manager, config, &error)) {
 		_LOGE (LOGD_SHARING, "share: (%s) failed to start dnsmasq: %s",
-		       ip_iface, (error && error->message) ? error->message : "(unknown)");
+		       ip_iface, error->message);
 		g_error_free (error);
 		nm_act_request_set_shared (req, FALSE);
 		return FALSE;
@@ -8624,7 +8624,7 @@ nm_device_bring_up (NMDevice *self, gboolean block, gboolean *no_firmware)
 
 	g_return_val_if_fail (NM_IS_DEVICE (self), FALSE);
 
-	_LOGD (LOGD_HW, "bringing up device.");
+	_LOGD (LOGD_HW, "bringing up device");
 
 	if (NM_DEVICE_GET_CLASS (self)->bring_up) {
 		if (!NM_DEVICE_GET_CLASS (self)->bring_up (self, no_firmware))
@@ -8698,7 +8698,7 @@ nm_device_take_down (NMDevice *self, gboolean block)
 
 	g_return_if_fail (NM_IS_DEVICE (self));
 
-	_LOGD (LOGD_HW, "taking down device.");
+	_LOGD (LOGD_HW, "taking down device");
 
 	if (NM_DEVICE_GET_CLASS (self)->take_down) {
 		if (!NM_DEVICE_GET_CLASS (self)->take_down (self))
@@ -10028,11 +10028,14 @@ nm_device_add_pending_action (NMDevice *self, const char *action, gboolean asser
 gboolean
 nm_device_remove_pending_action (NMDevice *self, const char *action, gboolean assert_is_pending)
 {
-	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+	NMDevicePrivate *priv;
 	GSList *iter, *next;
 	guint count = 0;
 
+	g_return_val_if_fail (self, FALSE);
 	g_return_val_if_fail (action, FALSE);
+
+	priv = NM_DEVICE_GET_PRIVATE (self);
 
 	for (iter = priv->pending_actions; iter; iter = next) {
 		next = iter->next;
@@ -10542,7 +10545,7 @@ _set_state_full (NMDevice *self,
 	if (   (priv->state == state)
 	    && (   state != NM_DEVICE_STATE_UNAVAILABLE
 	        || !priv->firmware_missing)) {
-		_LOGD (LOGD_DEVICE, "device state change: %s -> %s (reason '%s') [%d %d %d]%s",
+		_LOGD (LOGD_DEVICE, "state change: %s -> %s (reason '%s') [%d %d %d]%s",
 		       state_to_string (old_state),
 		       state_to_string (state),
 		       reason_to_string (reason),
@@ -10553,7 +10556,7 @@ _set_state_full (NMDevice *self,
 		return;
 	}
 
-	_LOGI (LOGD_DEVICE, "device state change: %s -> %s (reason '%s') [%d %d %d]",
+	_LOGI (LOGD_DEVICE, "state change: %s -> %s (reason '%s') [%d %d %d]",
 	       state_to_string (old_state),
 	       state_to_string (state),
 	       reason_to_string (reason),
