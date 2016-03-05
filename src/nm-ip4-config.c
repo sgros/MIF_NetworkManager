@@ -60,6 +60,13 @@ typedef struct _NMIP4ConfigPrivate {
 	int ifindex;
 	gint64 route_metric;
 	gboolean metered;
+
+	/*
+	 * If PVD ID was set from the outside don't change it, i.e.
+	 * it has a fixed value.
+	 */
+	gboolean pvdid_fixed;
+	PVDID pvdid;
 } NMIP4ConfigPrivate;
 
 /* internal guint32 are assigned to gobject properties of type uint. Ensure, that uint is large enough */
@@ -78,6 +85,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMIP4Config,
 	PROP_SEARCHES,
 	PROP_DNS_OPTIONS,
 	PROP_WINS_SERVERS,
+	PROP_PVD_ID,
 );
 
 NMIP4Config *
@@ -2084,6 +2092,77 @@ nm_ip4_config_get_metered (const NMIP4Config *config)
 
 /******************************************************************/
 
+void
+nm_ip4_config_set_pvdid (NMIP4Config *config, PVDID *pvdid)
+{
+	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
+
+	switch (pvdid->type) {
+	case NDP_PVDID_NONE:
+		/* TODO/BUG: Log warning/error */
+		break;
+	case NDP_PVDID_TYPE_UUID:
+		priv->pvdid.type = pvdid->type;
+		strncpy(priv->pvdid.uuid, pvdid->uuid, 36);
+		priv->pvdid_fixed = TRUE;
+	default:
+		/* TODO/BUG: Log warning/error */
+		break;
+	}
+}
+
+void
+nm_ip4_config_calc_pvdid (const NMIP4Config *config)
+{
+}
+
+PVDID *
+nm_ip4_config_get_pvdid (const NMIP4Config *config)
+{
+	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
+
+	if (!priv->pvdid_fixed)
+		nm_ip4_config_calc_pvdid (config);
+
+	return &priv->pvdid;
+}
+
+guint
+nm_ip4_config_pvd_hash (gconstpointer key)
+{
+	PVDID *pvdid = (PVDID *)key;
+
+	switch (pvdid->type) {
+	case NDP_PVDID_NONE:
+		return 0;
+	case NDP_PVDID_TYPE_UUID:
+		return g_str_hash(pvdid->uuid);
+	}
+
+	return 0;
+}
+
+gboolean
+nm_ip4_config_pvd_cmp(gconstpointer a, gconstpointer b)
+{
+	PVDID *pvdid_a = (PVDID *)a;
+	PVDID *pvdid_b = (PVDID *)b;
+
+	if (pvdid_a->type != pvdid_a->type)
+		return FALSE;
+
+	switch(pvdid_a->type) {
+	case NDP_PVDID_NONE:
+		return FALSE;
+	case NDP_PVDID_TYPE_UUID:
+		return g_str_equal(pvdid_a->uuid, pvdid_b->uuid);
+	}
+
+	return FALSE;
+}
+
+/******************************************************************/
+
 static inline void
 hash_u32 (GChecksum *sum, guint32 n)
 {
@@ -2389,6 +2468,12 @@ get_property (GObject *object, guint prop_id,
 		                                                 priv->wins->len,
 		                                                 sizeof (guint32)));
 		break;
+	case PROP_PVD_ID:
+		if (priv->pvdid.type == NDP_PVDID_TYPE_UUID)
+			g_value_set_string (value, priv->pvdid.uuid);
+		else
+			g_value_set_string (value, NULL);
+		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -2491,6 +2576,12 @@ nm_ip4_config_class_init (NMIP4ConfigClass *config_class)
 		                      NULL,
 		                      G_PARAM_READABLE |
 		                      G_PARAM_STATIC_STRINGS);
+
+	obj_properties[PROP_PVD_ID] =
+		g_param_spec_string (NM_IP4_CONFIG_PVD_ID, "", "",
+		                     NULL,
+		                     G_PARAM_READABLE |
+		                     G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 

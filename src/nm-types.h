@@ -21,6 +21,8 @@
 #ifndef __NETWORKMANAGER_TYPES_H__
 #define __NETWORKMANAGER_TYPES_H__
 
+#include <ndp.h>
+
 #ifdef __NM_UTILS_PRIVATE_H__
 #error "nm-utils-private.h" must not be used outside of libnm-core/. Do you want "nm-core-internal.h"?
 #endif
@@ -172,5 +174,14 @@ typedef struct _NMNetns              NMNetns;
 
 /* utils */
 typedef struct _NMUtilsIPv6IfaceId   NMUtilsIPv6IfaceId;
+
+/* IP config */
+typedef struct _PVDID {
+	enum ndp_pvdid_type type;
+	guint8 len;
+	union {
+		char uuid[37];
+	};
+} PVDID;
 
 #endif  /* NM_TYPES_H */

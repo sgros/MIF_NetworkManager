@@ -59,6 +59,9 @@
     <property name="WinsServers" type="au" access="read">
       <tp:docstring>The Windows Internet Name Service servers associated with the connection.  Each address is in network byte order.</tp:docstring>
     </property>
+    <property name="ProvisioningDomainId" type="s" access="read">
+      <tp:docstring>ID of a provisioning domain that contains configuration data of a connection.</tp:docstring>
+    </property>
 
     <signal name="PropertiesChanged">
       <arg name="properties" type="a{sv}" tp:type="String_Variant_Map">

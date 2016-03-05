@@ -38,18 +38,6 @@
 
 #include "nmdbus-ip6-config.h"
 
-/*
- * TODO: The same structure is defined in src/rdisc/nm-rdisc.h too!
- */
-struct _pvdid {
-	enum ndp_pvdid_type type;
-	guint8 len;
-	union {
-		char uuid[37];
-	};
-};
-
-
 G_DEFINE_TYPE (NMIP6Config, nm_ip6_config, NM_TYPE_EXPORTED_OBJECT)
 
 #define NM_IP6_CONFIG_GET_PRIVATE(o) ((o)->priv)
@@ -67,6 +55,11 @@ typedef struct _NMIP6ConfigPrivate {
 	int ifindex;
 	gint64 route_metric;
 
+	/*
+	 * If PVD ID was set from the outside don't change it, i.e.
+	 * it has a fixed value.
+	 */
+	gboolean pvdid_fixed;
 	PVDID pvdid;
 } NMIP6ConfigPrivate;
 
@@ -1818,12 +1811,14 @@ nm_ip6_config_set_pvdid (NMIP6Config *config, PVDID *pvdid)
 
 	switch(pvdid->type) {
 	case NDP_PVDID_NONE:
-		// TODO: This is actually error and has to be reported!
+		/* TODO/BUG: Log warning/error */
 		break;
 	case NDP_PVDID_TYPE_UUID:
 		priv->pvdid.type = pvdid->type;
 		strncpy(priv->pvdid.uuid, pvdid->uuid, 36);
+		priv->pvdid_fixed = TRUE;
 	default:
+		/* TODO/BUG: Log warning/error */
 		break;
 	}
 }
@@ -1834,6 +1829,11 @@ nm_ip6_config_get_pvdid (const NMIP6Config *config)
 	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
 
 	return &priv->pvdid;
+}
+
+void
+nm_ip6_config_calc_pvdid (const NMIP6Config *config)
+{
 }
 
 guint

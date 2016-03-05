@@ -25,9 +25,8 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 
-#include <ndp.h>
-
 #include "nm-default.h"
+#include "nm-types.h"
 #include "nm-setting-ip6-config.h"
 #include "NetworkManagerUtils.h"
 
@@ -90,19 +89,6 @@ typedef struct {
 	guint32 timestamp;
 	guint32 lifetime;
 } NMRDiscDNSDomain;
-
-/*
- * TODO: The same structure is defined
- *		src/nm-ip6-config.h
- *		libnm/nm-ip-config.h
- */
-typedef struct _pvdid {
-	enum ndp_pvdid_type type;
-	guint8 len;
-	union {
-		char uuid[37];
-	};
-} PVDID;
 
 typedef struct {
 	PVDID pvdid;
