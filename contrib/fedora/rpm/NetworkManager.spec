@@ -31,7 +31,7 @@
 
 %global _hardened_build 1
 
-%global git_sha_version %(test -n '%{git_sha}' && echo '.%{git_sha}')
+%global git_sha_version %{?git_sha:.%{git_sha}}
 
 ###############################################################################
 
@@ -456,6 +456,11 @@ rm -f %{buildroot}%{_libdir}/NetworkManager/*.la
 # install the pristine docs
 cp ORIG-docs/libnm-glib/html/* %{buildroot}%{_datadir}/gtk-doc/html/libnm-glib/
 cp ORIG-docs/libnm-util/html/* %{buildroot}%{_datadir}/gtk-doc/html/libnm-util/
+%endif
+
+%if 0%{?__debug_package}
+mkdir -p %{buildroot}%{_prefix}/src/debug/NetworkManager-%{real_version}
+cp valgrind.suppressions %{buildroot}%{_prefix}/src/debug/NetworkManager-%{real_version}
 %endif
 
 
