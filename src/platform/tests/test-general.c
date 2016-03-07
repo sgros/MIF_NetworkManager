@@ -18,12 +18,12 @@
  * Copyright (C) 2015 Red Hat, Inc.
  */
 
-#include "nm-platform-utils.h"
+#include "nm-default.h"
 
 #include <linux/rtnetlink.h>
 
+#include "nm-platform-utils.h"
 #include "nm-linux-platform.h"
-#include "nm-default.h"
 
 #include "nm-test-utils.h"
 

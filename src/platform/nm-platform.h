@@ -42,6 +42,7 @@
 
 /******************************************************************/
 
+#define NM_PLATFORM_NETNS_SUPPORT      "netns-support"
 #define NM_PLATFORM_REGISTER_SINGLETON "register-singleton"
 
 /******************************************************************/
@@ -177,8 +178,6 @@ typedef enum {
 	NM_PLATFORM_SIGNAL_CHANGED,
 	NM_PLATFORM_SIGNAL_REMOVED,
 } NMPlatformSignalChangeType;
-
-#define NM_PLATFORM_LIFETIME_PERMANENT G_MAXUINT32
 
 typedef enum { /*< skip >*/
 	NM_PLATFORM_GET_ROUTE_FLAGS_NONE                            = 0,
@@ -464,6 +463,8 @@ typedef struct {
 
 struct _NMPlatform {
 	GObject parent;
+
+	NMPNetns *_netns;
 };
 
 typedef struct {
@@ -677,6 +678,9 @@ _nm_platform_uint8_inv (guint8 scope)
 {
 	return (guint8) ~scope;
 }
+
+NMPNetns *nm_platform_netns_get (NMPlatform *self);
+gboolean nm_platform_netns_push (NMPlatform *platform, NMPNetns **netns);
 
 const char *nm_link_type_to_string (NMLinkType link_type);
 
