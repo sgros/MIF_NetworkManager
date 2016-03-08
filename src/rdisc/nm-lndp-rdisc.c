@@ -115,15 +115,7 @@ pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
 	int i;
 	char addrstr[INET6_ADDRSTRLEN];
 
-	switch(pvd->pvdid.type) {
-	case NDP_PVDID_TYPE_UUID:
-		_LOGD ("PvD_ID type=%u id=%s", pvd->pvdid.type, pvd->pvdid.uuid);
-		break;
-
-	default:
-		_LOGW ("received unrecognized PvD ID type %u", pvd->pvdid.type);
-		break;
-	}
+	_LOGD ("PvD_ID %s", pvd->pvdid);
 
 	for (i = 0; i < pvd->gateways->len; i++) {
 		NMRDiscGateway *gateway = &g_array_index (pvd->gateways, NMRDiscGateway, i);
@@ -403,10 +395,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	}
 
 	pvd_uuid = pvd_generate_uuid(rdisc, pvd);
-	strncpy(pvd->pvdid.uuid, pvd_uuid, 36);
+	strncpy(pvd->pvdid, pvd_uuid, 36);
 	g_free(pvd_uuid);
-
-	pvd->pvdid.type = NDP_PVDID_TYPE_UUID;
 
 	_LOGD("Received implicit PvD");
 	pvd_dump(rdisc, pvd);
@@ -448,21 +438,20 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 
 		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
 				NDP_MSG_OPT_PVDID, offset, NDP_MSG_OPT_PVDCO) {
+			enum ndp_pvdid_type pvdid_type;
+			size_t pvdid_len;
 
-			pvd->pvdid.type = ndp_msg_opt_pvdid_type(msg, suboffset);
-			pvd->pvdid.len = ndp_msg_opt_pvdid_len(msg, suboffset);
+			pvdid_type = ndp_msg_opt_pvdid_type(msg, suboffset);
+			pvdid_len = ndp_msg_opt_pvdid_len(msg, suboffset);
 
-			switch(pvd->pvdid.type) {
-			case NDP_PVDID_TYPE_UUID:
-				memcpy(pvd->pvdid.uuid, ndp_msg_opt_pvdid(msg, suboffset), pvd->pvdid.len);
-				pvd->pvdid.uuid[pvd->pvdid.len + 1] = 0;
-				break;
-
-			default:
-				_LOGW ("received unrecognized PvD ID type %u, skipping PvD CO", pvd->pvdid.type);
+			if (pvdid_type != NDP_PVDID_TYPE_UUID || pvdid_len != 36) {
+				_LOGW ("received unrecognized PvD ID type %u (len=%lu), skipping PvD CO", pvdid_type, pvdid_len);
 				err = true;
 				break;
 			}
+
+			memcpy (pvd->pvdid, ndp_msg_opt_pvdid (msg, suboffset), pvdid_len);
+			pvd->pvdid[36] = 0;
 
 			if (err)
 				break;

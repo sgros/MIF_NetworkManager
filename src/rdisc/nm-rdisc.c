@@ -731,7 +731,7 @@ check_timestamps (NMRDisc *rdisc, guint32 now, NMRDiscConfigMap changed)
 	guint32 nextevent = never;
 
 	GHashTableIter iter;
-	PVDID *pvdid;
+	char *pvdid;
 	NMRDiscPVD *pvd;
 
 	nm_clear_g_source (&priv->timeout_id);
@@ -817,35 +817,13 @@ dns_domain_free (gpointer data)
 static guint
 pvd_hash_func(gconstpointer key)
 {
-	PVDID *pvdid = (PVDID *)key;
-
-	switch(pvdid->type) {
-	case NDP_PVDID_NONE:
-		return 0;
-	case NDP_PVDID_TYPE_UUID:
-		return g_str_hash(pvdid->uuid);
-	}
-
-	return 0;
+	return g_str_hash(key);
 }
 
 static gboolean
 pvd_cmp_func(gconstpointer a, gconstpointer b)
 {
-	NMRDiscPVD *pvd_a = (NMRDiscPVD *)a;
-	NMRDiscPVD *pvd_b = (NMRDiscPVD *)b;
-
-	if (pvd_a->pvdid.type != pvd_b->pvdid.type)
-		return FALSE;
-
-	switch(pvd_a->pvdid.type) {
-	case NDP_PVDID_NONE:
-		return FALSE;
-	case NDP_PVDID_TYPE_UUID:
-		return g_str_equal(pvd_a->pvdid.uuid, pvd_b->pvdid.uuid);
-	}
-
-	return FALSE;
+	return g_str_equal(a, b);
 }
 
 static void

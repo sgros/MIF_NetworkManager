@@ -62,11 +62,10 @@ typedef struct _NMIP4ConfigPrivate {
 	gboolean metered;
 
 	/*
-	 * If PVD ID was set from the outside don't change it, i.e.
-	 * it has a fixed value.
+	 * For PVD ID we use only ASCII coded UUID which is 36
+	 * characters long and we also take NULL (for precaution).
 	 */
-	gboolean pvdid_fixed;
-	PVDID pvdid;
+	char pvdid[37];
 } NMIP4ConfigPrivate;
 
 /* internal guint32 are assigned to gobject properties of type uint. Ensure, that uint is large enough */
@@ -2093,22 +2092,11 @@ nm_ip4_config_get_metered (const NMIP4Config *config)
 /******************************************************************/
 
 void
-nm_ip4_config_set_pvdid (NMIP4Config *config, PVDID *pvdid)
+nm_ip4_config_set_pvdid (NMIP4Config *config, char *pvdid)
 {
 	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
 
-	switch (pvdid->type) {
-	case NDP_PVDID_NONE:
-		/* TODO/BUG: Log warning/error */
-		break;
-	case NDP_PVDID_TYPE_UUID:
-		priv->pvdid.type = pvdid->type;
-		strncpy(priv->pvdid.uuid, pvdid->uuid, 36);
-		priv->pvdid_fixed = TRUE;
-	default:
-		/* TODO/BUG: Log warning/error */
-		break;
-	}
+	strncpy(priv->pvdid, pvdid, 36);
 }
 
 void
@@ -2116,49 +2104,24 @@ nm_ip4_config_calc_pvdid (const NMIP4Config *config)
 {
 }
 
-PVDID *
+char *
 nm_ip4_config_get_pvdid (const NMIP4Config *config)
 {
 	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
 
-	if (!priv->pvdid_fixed)
-		nm_ip4_config_calc_pvdid (config);
-
-	return &priv->pvdid;
+	return priv->pvdid;
 }
 
 guint
 nm_ip4_config_pvd_hash (gconstpointer key)
 {
-	PVDID *pvdid = (PVDID *)key;
-
-	switch (pvdid->type) {
-	case NDP_PVDID_NONE:
-		return 0;
-	case NDP_PVDID_TYPE_UUID:
-		return g_str_hash(pvdid->uuid);
-	}
-
-	return 0;
+	return g_str_hash(key);
 }
 
 gboolean
 nm_ip4_config_pvd_cmp(gconstpointer a, gconstpointer b)
 {
-	PVDID *pvdid_a = (PVDID *)a;
-	PVDID *pvdid_b = (PVDID *)b;
-
-	if (pvdid_a->type != pvdid_a->type)
-		return FALSE;
-
-	switch(pvdid_a->type) {
-	case NDP_PVDID_NONE:
-		return FALSE;
-	case NDP_PVDID_TYPE_UUID:
-		return g_str_equal(pvdid_a->uuid, pvdid_b->uuid);
-	}
-
-	return FALSE;
+	return g_str_equal(a, b);
 }
 
 /******************************************************************/
@@ -2469,10 +2432,7 @@ get_property (GObject *object, guint prop_id,
 		                                                 sizeof (guint32)));
 		break;
 	case PROP_PVD_ID:
-		if (priv->pvdid.type == NDP_PVDID_TYPE_UUID)
-			g_value_set_string (value, priv->pvdid.uuid);
-		else
-			g_value_set_string (value, NULL);
+		g_value_set_string (value, priv->pvdid);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);

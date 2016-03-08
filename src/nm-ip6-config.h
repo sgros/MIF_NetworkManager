@@ -147,8 +147,8 @@ void nm_ip6_config_set_mss (NMIP6Config *config, guint32 mss);
 guint32 nm_ip6_config_get_mss (const NMIP6Config *config);
 
 /* PvD ID */
-void nm_ip6_config_set_pvdid (NMIP6Config *config, PVDID *pvdid);
-PVDID * nm_ip6_config_get_pvdid (const NMIP6Config *config);
+void nm_ip6_config_set_pvdid (NMIP6Config *config, char *pvdid);
+char * nm_ip6_config_get_pvdid (const NMIP6Config *config);
 
 /* PvD functions */
 void nm_ip6_config_calc_pvdid (const NMIP6Config *config);

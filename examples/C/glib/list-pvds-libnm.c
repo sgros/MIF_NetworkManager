@@ -40,7 +40,7 @@
 static void
 show_pvd (NMActiveConnection *connection, NMIPConfig *pvd)
 {
-	const PVDID *pvdid;
+	const char *pvdid;
 	const char *gateway;
 	const char * const *nameservers;
 	const char * const *domains;
@@ -51,7 +51,7 @@ show_pvd (NMActiveConnection *connection, NMIPConfig *pvd)
 	int i;
 
 	pvdid = nm_ip_config_get_pvdid(pvd);
-	printf("Provisioning domain %s\n", pvdid->uuid);
+	printf("Provisioning domain %s\n", pvdid);
 
 	gateway = nm_ip_config_get_gateway(pvd);
 	printf("\tGateway: %s\n", gateway);

@@ -28,8 +28,6 @@
 
 #include <nm-object.h>
 
-#include <ndp.h>
-
 G_BEGIN_DECLS
 
 #define NM_TYPE_IP_CONFIG            (nm_ip_config_get_type ())
@@ -49,19 +47,6 @@ typedef struct {
 	/*< private >*/
 	gpointer padding[8];
 } NMIPConfigClass;
-
-/*
- * TODO: The same structure is defined in:
- *		src/nm-ip6-config.h
- *		src/rdisc/nm-rdisc.h
- */
-typedef struct _pvdid {
-	enum ndp_pvdid_type type;
-	guint8 len;
-	union {
-		char uuid[37];
-	};
-} PVDID;
 
 #define NM_IP_CONFIG_FAMILY "family"
 #define NM_IP_CONFIG_GATEWAY "gateway"
@@ -83,7 +68,7 @@ const char * const *nm_ip_config_get_nameservers  (NMIPConfig *config);
 const char * const *nm_ip_config_get_domains      (NMIPConfig *config);
 const char * const *nm_ip_config_get_searches     (NMIPConfig *config);
 const char * const *nm_ip_config_get_wins_servers (NMIPConfig *config);
-const PVDID *       nm_ip_config_get_pvdid        (NMIPConfig *config);
+const char *        nm_ip_config_get_pvdid        (NMIPConfig *config);
 
 G_END_DECLS
 

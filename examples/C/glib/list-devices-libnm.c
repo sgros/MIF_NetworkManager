@@ -40,7 +40,6 @@ show_device (NMDevice *device)
 	GPtrArray *pvds;
 	NMIPConfig *pvd;
 	int i;
-	const PVDID *pvdid;
 
 	val1 = nm_device_get_iface (device);
 	val2 = nm_device_get_ip_iface (device);
@@ -51,8 +50,7 @@ show_device (NMDevice *device)
 	if (pvds && pvds->len > 0) {
 		for (i = 0; i < pvds->len; i++) {
 			pvd = pvds->pdata[i];
-			pvdid = nm_ip_config_get_pvdid(pvd);
-			val4 = pvdid->uuid;
+			val4 = nm_ip_config_get_pvdid(pvd);
 			printf ("%-12s|%12s|%15s|%s\n", val1, val2, val3, val4);
 			val1 = val2 = val3 = "";
 		}

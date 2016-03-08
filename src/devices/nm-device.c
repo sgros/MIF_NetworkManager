@@ -382,8 +382,7 @@ typedef struct _NMDevicePrivate {
 	guint check_delete_unrealized_id;
 
 	/* Hash table of all PvDs received via device. The key to
-         * the table is PVDID structure, while the value is object
-         * nm_ip6_config.
+         * the table is PVDID, while the value is object nm_ip6_config.
          */
 	GHashTable * pvds;
 
@@ -5779,7 +5778,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 	if (changed & NM_RDISC_CONFIG_PVD) {
 		NMIP6Config *pvd;
 		GHashTableIter iter;
-		PVDID * key;
+		char * key;
 		NMRDiscPVD * value;
 		gboolean notify = FALSE;
 
@@ -5793,7 +5792,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		pvd = NULL;
 		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
 
-			pvd = g_hash_table_lookup(priv->pvds, &value->pvdid);
+			pvd = g_hash_table_lookup(priv->pvds, value->pvdid);
 			if (!pvd) {
 				pvd = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
 				notify = TRUE;
@@ -5804,7 +5803,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 			 */
 
 			/* Set PVD ID of a new key */
-			nm_ip6_config_set_pvdid(pvd, &value->pvdid);
+			nm_ip6_config_set_pvdid (pvd, value->pvdid);
 
 			/* Use the first gateway as ordered in router discovery cache. */
 			if (value->gateways->len) {
@@ -5887,7 +5886,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 
 			dhcp6_cleanup (self, CLEANUP_TYPE_DECONFIGURE, TRUE);
 
-			g_hash_table_replace(priv->pvds, nm_ip6_config_get_pvdid(pvd), pvd);
+			g_hash_table_replace (priv->pvds, nm_ip6_config_get_pvdid (pvd), pvd);
 
 			if (!nm_exported_object_is_exported (NM_EXPORTED_OBJECT (pvd)))
 				nm_exported_object_export (NM_EXPORTED_OBJECT (pvd));
@@ -5901,10 +5900,10 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		pvd = NULL;
 		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
 
-			pvd = g_hash_table_lookup(rdisc->pvds, &value->pvdid);
+			pvd = g_hash_table_lookup (rdisc->pvds, value->pvdid);
 			if (!pvd) {
 				// TODO: Check if the PvD is properly released!
-				g_hash_table_remove(priv->pvds, value);
+				g_hash_table_remove (priv->pvds, value);
 				notify = TRUE;
 			}
 
@@ -7774,7 +7773,7 @@ impl_device_get_pvds (NMDevice *self, GDBusMethodInvocation *context)
 	gs_free const char **paths = NULL;
 	guint i, len;
 	GHashTableIter iter;
-	PVDID * key;
+	char * key;
 	NMIP6Config * value;
 
 	if (priv->pvds)
@@ -11705,7 +11704,7 @@ get_property (GObject *object, guint prop_id,
 	case PROP_PVDS: {
 		char **pvd_list;
 		guint i, len;
-		PVDID * key;
+		char * key;
 		NMIP6Config * val;
 
 		len = priv->pvds ? g_hash_table_size (priv->pvds) : 0;

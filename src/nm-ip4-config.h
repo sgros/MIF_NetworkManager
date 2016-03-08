@@ -169,8 +169,8 @@ void nm_ip4_config_set_metered (NMIP4Config *config, gboolean metered);
 gboolean nm_ip4_config_get_metered (const NMIP4Config *config);
 
 /* PVDID */
-void nm_ip4_config_set_pvdid (NMIP4Config *config, PVDID *pvdid);
-PVDID *nm_ip4_config_get_pvdid (const NMIP4Config *config);
+void nm_ip4_config_set_pvdid (NMIP4Config *config, char *pvdid);
+char *nm_ip4_config_get_pvdid (const NMIP4Config *config);
 
 /* PvD functions */
 void nm_ip4_config_calc_pvdid (const NMIP4Config *config);

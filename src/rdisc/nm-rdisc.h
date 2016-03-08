@@ -91,7 +91,11 @@ typedef struct {
 } NMRDiscDNSDomain;
 
 typedef struct {
-	PVDID pvdid;
+	/*
+	 * For PVD ID we use only ASCII coded UUID which is 36
+	 * characters long and we also take NULL (for precaution).
+	 */
+	char pvdid[37];
 
 	GArray *gateways;
 	GArray *addresses;

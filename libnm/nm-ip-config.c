@@ -46,7 +46,12 @@ typedef struct {
 	char **searches;
 	char **wins;
 
-	PVDID pvdid;
+	 /*
+	 * For PVD ID we use only ASCII coded UUID which is 36
+	 * characters long and we also take NULL (for precaution).
+	 */
+	char pvdid[37];
+
 	gboolean new_style_data;
 } NMIPConfigPrivate;
 
@@ -171,16 +176,19 @@ demarshal_pvdid (NMObject *object, GParamSpec *pspec, GVariant *value, gpointer 
 {
 	NMIPConfigPrivate *priv = NM_IP_CONFIG_GET_PRIVATE (object);
 	gsize len;
-	const gchar *uuid;
+	const gchar *pvdid;
 
 	g_return_val_if_fail (g_variant_is_of_type (value, G_VARIANT_TYPE ("s")), FALSE);
 
-	uuid = g_variant_get_string(value, &len);
+	pvdid = g_variant_get_string(value, &len);
 
-	priv->pvdid.type = NDP_PVDID_TYPE_UUID;
-	strncpy(priv->pvdid.uuid, uuid, len);
+	g_assert (len == 0 || len == 36);
 
-	_nm_object_queue_notify (object, NM_IP_CONFIG_PVDID);
+	if (len) {
+		strncpy(priv->pvdid, pvdid, len);
+
+		_nm_object_queue_notify (object, NM_IP_CONFIG_PVDID);
+	}
 
 	return TRUE;
 }
@@ -558,11 +566,11 @@ nm_ip_config_get_routes (NMIPConfig *config)
  * safe for callers to reference and keep using it.
  *
  **/
-const PVDID *
+const char *
 nm_ip_config_get_pvdid (NMIPConfig *config)
 {
 	g_return_val_if_fail (NM_IS_IP_CONFIG (config), NULL);
 
-	return &NM_IP_CONFIG_GET_PRIVATE (config)->pvdid;
+	return NM_IP_CONFIG_GET_PRIVATE (config)->pvdid;
 }
 
