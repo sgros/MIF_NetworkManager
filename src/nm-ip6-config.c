@@ -1817,11 +1817,6 @@ nm_ip6_config_get_pvdid (const NMIP6Config *config)
 	return priv->pvdid;
 }
 
-void
-nm_ip6_config_calc_pvdid (const NMIP6Config *config)
-{
-}
-
 guint
 nm_ip6_config_pvd_hash (gconstpointer key)
 {

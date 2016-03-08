@@ -151,7 +151,6 @@ void nm_ip6_config_set_pvdid (NMIP6Config *config, char *pvdid);
 char * nm_ip6_config_get_pvdid (const NMIP6Config *config);
 
 /* PvD functions */
-void nm_ip6_config_calc_pvdid (const NMIP6Config *config);
 guint nm_ip6_config_pvd_hash (gconstpointer key);
 gboolean nm_ip6_config_pvd_cmp(gconstpointer a, gconstpointer b);
 

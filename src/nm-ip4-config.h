@@ -173,7 +173,7 @@ void nm_ip4_config_set_pvdid (NMIP4Config *config, char *pvdid);
 char *nm_ip4_config_get_pvdid (const NMIP4Config *config);
 
 /* PvD functions */
-void nm_ip4_config_calc_pvdid (const NMIP4Config *config);
+void nm_ip4_config_calc_pvdid (NMIP4Config *config);
 guint nm_ip4_config_pvd_hash (gconstpointer key);
 gboolean nm_ip4_config_pvd_cmp(gconstpointer a, gconstpointer b);
 
