@@ -45,6 +45,19 @@
 #include "nm-setting-connection.h"
 #include "nm-utils.h"
 #include "nm-manager.h"
+#include "nm-auth-utils.h"
+#include "nm-auth-manager.h"
+#include "nm-setting-ip6-config.h"
+#include "nm-setting-vpn.h"
+#include "nm-active-connection.h"
+#include "nm-active-connection.h"
+#include "nm-vpn-connection.h"
+#include "nm-vpn-manager.h"
+#include "nm-audit-manager.h"
+#include "nm-activation-request.h"
+#include "nm-core-internal.h"
+#include "nm-policy.h"
+#include "nm-logging.h"
 
 #include "nmdbus-netns.h"
 
@@ -59,6 +72,17 @@ retry_connections_for_parent_device (NMNetns *self, NMDevice *device);
 static NMDevice *
 find_parent_device_for_connection (NMNetns *self, NMConnection *connection);
 
+static gboolean
+autoconnect_slaves (NMNetns *self,
+                    NMSettingsConnection *master_connection,
+                    NMDevice *master_device,
+                    NMAuthSubject *subject);
+
+static void
+active_connection_state_changed (NMActiveConnection *active,
+                                 GParamSpec *pspec,
+                                 NMNetns *self);
+
 G_DEFINE_TYPE (NMNetns, nm_netns, NM_TYPE_EXPORTED_OBJECT)
 
 #define NM_NETNS_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_NETNS, NMNetnsPrivate))
@@ -68,6 +92,10 @@ enum {
 	PROP_NAME,
 	PROP_DEVICES,
 	PROP_ALL_DEVICES,
+	PROP_ACTIVATING_CONNECTION,
+	PROP_PRIMARY_CONNECTION,
+	PROP_PRIMARY_CONNECTION_TYPE,
+	PROP_METERED,
 };
 
 enum {
@@ -75,6 +103,8 @@ enum {
 	DEVICE_REMOVED,
 	INTERNAL_DEVICE_ADDED,
 	INTERNAL_DEVICE_REMOVED,
+	ACTIVE_CONNECTION_ADDED,
+	ACTIVE_CONNECTION_REMOVED,
 	LAST_SIGNAL,
 };
 static guint signals[LAST_SIGNAL] = { 0 };
@@ -168,6 +198,20 @@ typedef struct {
 	 */
 	NMConnectivity *connectivity;
 
+	GSList *active_connections;
+	GSList *authorizing_connections;
+	guint ac_cleanup_id;
+
+	NMActiveConnection *primary_connection;
+	NMActiveConnection *activating_connection;
+	NMMetered metered;
+
+#if 0
+	NMPolicy *policy;
+#endif
+
+	NMVpnManager *vpn_manager;
+
 	/*
 	 * Hostname in the given network namespace
 	 */
@@ -176,7 +220,27 @@ typedef struct {
 
 } NMNetnsPrivate;
 
-/**************************************************************/
+/************************************************************************/
+
+#define _NMLOG_PREFIX_NAME      "netns"
+#define _NMLOG(level, domain, ...) \
+    G_STMT_START { \
+        const NMLogLevel __level = (level); \
+        const NMLogDomain __domain = (domain); \
+        \
+        if (nm_logging_enabled (__level, __domain)) { \
+            const NMNetns *const __self = (self); \
+            char __sbuf[32]; \
+            \
+            _nm_log (__level, __domain, 0, \
+                     "%s%s: " _NM_UTILS_MACRO_FIRST (__VA_ARGS__), \
+                     _NMLOG_PREFIX_NAME, \
+                         nm_sprintf_buf (__sbuf, "[%p]", __self) \
+                     _NM_UTILS_MACRO_REST (__VA_ARGS__)); \
+        } \
+    } G_STMT_END
+
+/************************************************************************/
 
 /*
  * Functions that manipulate device change callback structure
@@ -274,7 +338,7 @@ _device_change_find (NMNetns *self, NMDevice *device)
  * Remove callback structure from a list, cancel timeout and
  * call callback function.
  *
- * BUG/HACK: This is a public function because it is called by NMManager
+ * BUG/HACK: This is a public function because it is called by NMNetns
  * object to handle movement of devices into root network namespace.
  */
 void
@@ -970,6 +1034,18 @@ nm_netns_setup(NMNetns *self, gboolean isroot)
 	/* Activate loopback interface in a new network namespace */
 	nm_platform_link_set_up (priv->platform, 1, NULL);
 
+#if 0
+	priv->policy = nm_policy_new (self, nm_settings_get());
+	g_signal_connect (priv->policy, "notify::" NM_POLICY_DEFAULT_IP4_DEVICE,
+	                  G_CALLBACK (policy_default_device_changed), self);
+	g_signal_connect (priv->policy, "notify::" NM_POLICY_DEFAULT_IP6_DEVICE,
+	                  G_CALLBACK (policy_default_device_changed), self);
+	g_signal_connect (priv->policy, "notify::" NM_POLICY_ACTIVATING_IP4_DEVICE,
+	                  G_CALLBACK (policy_activating_device_changed), self);
+	g_signal_connect (priv->policy, "notify::" NM_POLICY_ACTIVATING_IP6_DEVICE,
+	                  G_CALLBACK (policy_activating_device_changed), self);
+#endif
+
 	return TRUE;
 }
 
@@ -985,6 +1061,23 @@ nm_netns_stop(NMNetns *self)
 		remove_device (self, NM_DEVICE (priv->devices->data), TRUE, TRUE);
 
 	nm_platform_netns_destroy(priv->platform, priv->name);
+
+	/*
+	 * TODO/BUG: Maybe this should go to dispose method?
+	 */
+	nm_clear_g_source (&priv->ac_cleanup_id);
+	g_clear_object (&priv->activating_connection);
+
+#if 0
+	/*
+	 * TODO/BUG: Maybe this should go to dispose method?
+	 */
+	if (priv->policy) {
+		g_signal_handlers_disconnect_by_func (priv->policy, policy_default_device_changed, manager);
+		g_signal_handlers_disconnect_by_func (priv->policy, policy_activating_device_changed, manager);
+		g_clear_object (&priv->policy);
+	}
+#endif
 
 	g_clear_object(&priv->platform);
 }
@@ -1002,8 +1095,54 @@ nm_netns_new (const char *netns_name)
 
 /******************************************************************/
 
+const GSList *
+nm_netns_get_devices (NMNetns *netns)
+{
+	g_return_val_if_fail (NM_IS_NETNS (netns), NULL);
+
+	return NM_NETNS_GET_PRIVATE (netns)->devices;
+}
+
+static NMDevice *
+nm_netns_get_connection_device (NMNetns *self,
+                                NMConnection *connection)
+{
+	NMActiveConnection *ac = nm_manager_find_ac_for_connection (nm_manager_get (), connection);
+	if (ac == NULL)
+		return NULL;
+
+	return nm_active_connection_get_device (ac);
+}
+
+static NMDevice *
+nm_netns_get_best_device_for_connection (NMNetns *self,
+                                         NMConnection *connection,
+                                         gboolean for_user_request)
+{
+	const GSList *devices, *iter;
+	NMDevice *act_device = nm_netns_get_connection_device (self, connection);
+	NMDeviceCheckConAvailableFlags flags;
+
+	if (act_device)
+		return act_device;
+
+	flags = for_user_request ? NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST : NM_DEVICE_CHECK_CON_AVAILABLE_NONE;
+
+	/* Pick the first device that's compatible with the connection. */
+	devices = nm_netns_get_devices (self);
+	for (iter = devices; iter; iter = g_slist_next (iter)) {
+		NMDevice *device = NM_DEVICE (iter->data);
+
+		if (nm_device_check_connection_available (device, connection, flags, NULL))
+			return device;
+	}
+
+	/* No luck. :( */
+	return NULL;
+}
+
 static void
-_get_devices (NMManager *self,
+_get_devices (NMNetns *self,
 	      GDBusMethodInvocation *context,
 	      gboolean all_devices)
 {
@@ -1029,14 +1168,14 @@ _get_devices (NMManager *self,
 }
 
 static void
-impl_netns_get_devices (NMManager *self,
+impl_netns_get_devices (NMNetns *self,
                         GDBusMethodInvocation *context)
 {
 	_get_devices (self, context, FALSE);
 }
 
 static void
-impl_netns_get_all_devices (NMManager *self,
+impl_netns_get_all_devices (NMNetns *self,
                             GDBusMethodInvocation *context)
 {
 	_get_devices (self, context, TRUE);
@@ -1131,43 +1270,6 @@ impl_netns_take_device (NMNetns *self,
 	}
 }
 
-/******************************************************************/
-
-#if 0
-static void
-system_hostname_changed_cb (NMSettings *settings,
-                            GParamSpec *pspec,
-                            gpointer user_data)
-{
-	NMNetns *self = NM_NETNS (user_data);
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
-	char *hostname;
-
-	hostname = nm_settings_get_hostname (nm_settings_get());
-
-	/* nm_settings_get_hostname() does not return an empty hostname. */
-	nm_assert (!hostname || *hostname);
-
-	if (!hostname && !priv->hostname)
-		return;
-	if (hostname && priv->hostname && !strcmp (hostname, priv->hostname)) {
-		g_free (hostname);
-		return;
-	}
-
-	/* realloc, to free possibly trailing data after NUL. */
-	if (hostname)
-		hostname = g_realloc (hostname, strlen (hostname) + 1);
-
-	g_free (priv->hostname);
-	priv->hostname = hostname;
-
-	g_object_notify (G_OBJECT (self), NM_NETNS_HOSTNAME);
-
-        nm_dhcp_manager_set_default_hostname (nm_dhcp_manager_get (), priv->hostname);
-}
-#endif
-
 /**
  * find_device_by_iface:
  * @self: the #NMNetns
@@ -1217,6 +1319,1445 @@ find_device_by_iface (NMNetns *self,
 	return fallback;
 }
 
+/**
+ * validate_activation_request:
+ * @self: the #NMNetns
+ * @context: the D-Bus context of the requestor
+ * @connection: the partial or complete #NMConnection to be activated
+ * @device_path: the object path of the device to be activated, or "/"
+ * @out_device: on successful reutrn, the #NMDevice to be activated with @connection
+ * @out_vpn: on successful return, %TRUE if @connection is a VPN connection
+ * @error: location to store an error on failure
+ *
+ * Performs basic validation on an activation request, including ensuring that
+ * the requestor is a valid Unix process, is not disallowed in @connection
+ * permissions, and that a device exists that can activate @connection.
+ *
+ * Returns: on success, the #NMAuthSubject representing the requestor, or
+ *   %NULL on error
+ */
+static NMAuthSubject *
+validate_activation_request (NMNetns *self,
+                             GDBusMethodInvocation *context,
+                             NMConnection *connection,
+                             const char *device_path,
+                             NMDevice **out_device,
+                             gboolean *out_vpn,
+                             GError **error)
+{
+	NMDevice *device = NULL;
+	gboolean vpn = FALSE;
+	NMAuthSubject *subject = NULL;
+	char *error_desc = NULL;
+
+	g_assert (connection);
+	g_assert (out_device);
+	g_assert (out_vpn);
+
+	/* Validate the caller */
+	subject = nm_auth_subject_new_unix_process_from_context (context);
+	if (!subject) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_PERMISSION_DENIED,
+		                     "Failed to get request UID.");
+		return NULL;
+	}
+
+	/* Ensure the subject has permissions for this connection */
+	if (!nm_auth_is_subject_in_acl (connection,
+	                                subject,
+	                                &error_desc)) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_PERMISSION_DENIED,
+		                     error_desc);
+		g_free (error_desc);
+		goto error;
+	}
+
+	/* Not implemented yet, we want to fail early */
+	if (   nm_connection_get_setting_connection (connection)
+	    && nm_connection_get_setting_ip6_config (connection)
+	    && !strcmp (nm_utils_get_ip_config_method (connection, NM_TYPE_SETTING_IP6_CONFIG),
+	                NM_SETTING_IP6_CONFIG_METHOD_SHARED)) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_CONNECTION_NOT_AVAILABLE,
+		                     "Sharing IPv6 connections is not supported yet.");
+		return NULL;
+	}
+
+	/* Check whether it's a VPN or not */
+	if (   nm_connection_get_setting_vpn (connection)
+	    || nm_connection_is_type (connection, NM_SETTING_VPN_SETTING_NAME))
+		vpn = TRUE;
+
+	/* Normalize device path */
+	if (device_path && g_strcmp0 (device_path, "/") == 0)
+		device_path = NULL;
+
+	/* And validate it */
+	if (device_path) {
+		device = nm_netns_get_device_by_path (self, device_path);
+		if (!device) {
+			g_set_error_literal (error,
+			                     NM_NETNS_ERROR,
+			                     NM_NETNS_ERROR_UNKNOWN_DEVICE,
+			                     "Device not found");
+			goto error;
+		}
+	} else
+		device = nm_netns_get_best_device_for_connection (self, connection, TRUE);
+
+	if (!device && !vpn) {
+		gboolean is_software = nm_connection_is_virtual (connection);
+
+		/* VPN and software-device connections don't need a device yet */
+		if (!is_software) {
+			g_set_error_literal (error,
+			                     NM_NETNS_ERROR,
+			                     NM_NETNS_ERROR_UNKNOWN_DEVICE,
+			                     "No suitable device found for this connection.");
+			goto error;
+		}
+
+		if (is_software) {
+			char *iface;
+
+			/* Look for an existing device with the connection's interface name */
+			iface = nm_netns_get_connection_iface (self, connection, NULL, error);
+			if (!iface)
+				goto error;
+
+			device = find_device_by_iface (self, iface, connection, NULL);
+			g_free (iface);
+		}
+	}
+
+	if ((!vpn || device_path) && !device) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_UNKNOWN_DEVICE,
+		                     "Failed to find a compatible device for this connection");
+		goto error;
+	}
+
+	*out_device = device;
+	*out_vpn = vpn;
+	return subject;
+
+error:
+	g_object_unref (subject);
+	return NULL;
+}
+
+static NMActiveConnection *
+_new_vpn_active_connection (NMNetns *self,
+                            NMSettingsConnection *settings_connection,
+                            const char *specific_object,
+                            NMAuthSubject *subject,
+                            GError **error)
+{
+	NMActiveConnection *parent = NULL;
+	NMDevice *device = NULL;
+
+	g_return_val_if_fail (!settings_connection || NM_IS_SETTINGS_CONNECTION (settings_connection), NULL);
+
+	if (specific_object) {
+		/* Find the specific connection the client requested we use */
+		parent = nm_manager_active_connection_get_by_path (nm_manager_get (), specific_object);
+		if (!parent) {
+			g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_CONNECTION_NOT_ACTIVE,
+			                     "Base connection for VPN connection not active.");
+			return NULL;
+		}
+	} else
+		parent = nm_manager_get_primary_connection (nm_manager_get ());
+
+	if (!parent) {
+		g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_CONNECTION,
+		                     "Could not find source connection.");
+		return NULL;
+	}
+
+	device = nm_active_connection_get_device (parent);
+	if (!device) {
+		g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_DEVICE,
+		                     "Source connection had no active device.");
+		return NULL;
+	}
+
+	return (NMActiveConnection *) nm_vpn_connection_new (settings_connection,
+	                                                     device,
+	                                                     nm_exported_object_get_path (NM_EXPORTED_OBJECT (parent)),
+	                                                     subject);
+}
+
+static NMActiveConnection *
+_new_active_connection (NMNetns *self,
+                        NMConnection *connection,
+                        const char *specific_object,
+                        NMDevice *device,
+                        NMAuthSubject *subject,
+                        GError **error)
+{
+	NMSettingsConnection *settings_connection = NULL;
+	NMActiveConnection *existing_ac;
+	gboolean is_vpn;
+
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
+	g_return_val_if_fail (NM_IS_AUTH_SUBJECT (subject), NULL);
+
+	/* Can't create new AC for already-active connection */
+	existing_ac = nm_manager_find_ac_for_connection (nm_manager_get (), connection);
+	if (NM_IS_VPN_CONNECTION (existing_ac)) {
+		g_set_error (error, NM_NETNS_ERROR, NM_NETNS_ERROR_CONNECTION_ALREADY_ACTIVE,
+		             "Connection '%s' is already active",
+		             nm_connection_get_id (connection));
+		return NULL;
+	}
+
+	/* Normalize the specific object */
+	if (specific_object && g_strcmp0 (specific_object, "/") == 0)
+		specific_object = NULL;
+
+	is_vpn = nm_connection_is_type (NM_CONNECTION (connection), NM_SETTING_VPN_SETTING_NAME);
+
+	if (NM_IS_SETTINGS_CONNECTION (connection))
+		settings_connection = (NMSettingsConnection *) connection;
+
+	if (is_vpn) {
+		return _new_vpn_active_connection (self,
+		                                   settings_connection,
+		                                   specific_object,
+		                                   subject,
+		                                   error);
+	}
+
+	return (NMActiveConnection *) nm_act_request_new (settings_connection,
+	                                                  specific_object,
+	                                                  subject,
+	                                                  device);
+}
+
+static gboolean
+_internal_activate_vpn (NMNetns *self, NMActiveConnection *active, GError **error)
+{
+	gboolean success;
+
+	g_assert (NM_IS_VPN_CONNECTION (active));
+
+	nm_exported_object_export (NM_EXPORTED_OBJECT (active));
+	success = nm_vpn_manager_activate_connection (NM_NETNS_GET_PRIVATE (self)->vpn_manager,
+	                                              NM_VPN_CONNECTION (active),
+	                                              error);
+	if (success)
+		g_object_notify (G_OBJECT (self), NM_MANAGER_ACTIVE_CONNECTIONS);
+	else
+		nm_exported_object_unexport (NM_EXPORTED_OBJECT (active));
+
+	return success;
+}
+
+static gboolean
+is_compatible_with_slave (NMConnection *master, NMConnection *slave)
+{
+	NMSettingConnection *s_con;
+
+	g_return_val_if_fail (master, FALSE);
+	g_return_val_if_fail (slave, FALSE);
+
+	s_con = nm_connection_get_setting_connection (slave);
+	g_assert (s_con);
+
+	return nm_connection_is_type (master, nm_setting_connection_get_slave_type (s_con));
+}
+
+/**
+ * find_master:
+ * @self: #NMNetns object
+ * @connection: the #NMConnection to find the master connection and device for
+ * @device: the #NMDevice, if any, which will activate @connection
+ * @out_master_connection: on success, the master connection of @connection if
+ *   that master connection was found
+ * @out_master_device: on success, the master device of @connection if that
+ *   master device was found
+ * @out_master_ac: on success, the master ActiveConnection of @connection if
+ *   there already is one
+ * @error: the error, if an error occurred
+ *
+ * Given an #NMConnection, attempts to find its master. If @connection has
+ * no master, this will return %TRUE and @out_master_connection and
+ * @out_master_device will be untouched.
+ *
+ * If @connection does have a master, then the outputs depend on what is in its
+ * #NMSettingConnection:master property:
+ *
+ * If "master" is the ifname of an existing #NMDevice, and that device has a
+ * compatible master connection activated or activating on it, then
+ * @out_master_device, @out_master_connection, and @out_master_ac will all be
+ * set. If the device exists and is idle, only @out_master_device will be set.
+ * If the device exists and has an incompatible connection on it, an error
+ * will be returned.
+ *
+ * If "master" is the ifname of a non-existent device, then @out_master_device
+ * will be %NULL, and @out_master_connection will be a connection whose
+ * activation would cause the creation of that device. @out_master_ac MAY be
+ * set in this case as well (if the connection has started activating, but has
+ * not yet created its device).
+ *
+ * If "master" is the UUID of a compatible master connection, then
+ * @out_master_connection will be the identified connection, and @out_master_device
+ * and/or @out_master_ac will be set if the connection is currently activating.
+ * (@out_master_device will not be set if the device exists but does not have
+ * @out_master_connection active/activating on it.)
+ *
+ * Returns: %TRUE if the master device and/or connection could be found or if
+ *  the connection did not require a master, %FALSE otherwise
+ **/
+static gboolean
+find_master (NMNetns *self,
+             NMConnection *connection,
+             NMDevice *device,
+             NMSettingsConnection **out_master_connection,
+             NMDevice **out_master_device,
+             NMActiveConnection **out_master_ac,
+             GError **error)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMSettingConnection *s_con;
+	const char *master;
+	NMDevice *master_device = NULL;
+	NMSettingsConnection *master_connection = NULL;
+	GSList *iter;
+
+	s_con = nm_connection_get_setting_connection (connection);
+	g_assert (s_con);
+	master = nm_setting_connection_get_master (s_con);
+
+	if (master == NULL)
+		return TRUE;  /* success, but no master */
+
+	/* Try as an interface name first */
+	master_device = find_device_by_iface (self, master, NULL, connection);
+	if (master_device) {
+		if (master_device == device) {
+			g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_DEPENDENCY_FAILED,
+			                     "Device cannot be its own master");
+			return FALSE;
+		}
+
+		master_connection = nm_device_get_settings_connection (master_device);
+		if (master_connection && !is_compatible_with_slave (NM_CONNECTION (master_connection), connection)) {
+			g_set_error (error, NM_NETNS_ERROR, NM_NETNS_ERROR_DEPENDENCY_FAILED,
+			             "The active connection on %s is not a valid master for '%s'",
+			             nm_device_get_iface (master_device),
+			             nm_connection_get_id (connection));
+			return FALSE;
+		}
+	} else {
+		/* Try master as a connection UUID */
+		master_connection = nm_settings_get_connection_by_uuid (nm_settings_get(), master);
+		if (master_connection) {
+			/* Check if the master connection is activated on some device already */
+			for (iter = priv->devices; iter; iter = g_slist_next (iter)) {
+				NMDevice *candidate = NM_DEVICE (iter->data);
+
+				if (candidate == device)
+					continue;
+
+				if (nm_device_get_settings_connection (candidate) == master_connection) {
+					master_device = candidate;
+					break;
+				}
+			}
+		}
+	}
+
+	if (out_master_connection)
+		*out_master_connection = master_connection;
+	if (out_master_device)
+		*out_master_device = master_device;
+	if (out_master_ac && master_connection)
+		*out_master_ac = nm_manager_find_ac_for_connection (nm_manager_get (), NM_CONNECTION (master_connection));
+
+	if (master_device || master_connection)
+		return TRUE;
+	else {
+		g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_DEVICE,
+		                     "Master connection not found or invalid");
+		return FALSE;
+	}
+}
+
+/* Filter out connections that are already active.
+ * nm_settings_get_connections() returns sorted list. We need to preserve the
+ * order so that we didn't change auto-activation order (recent timestamps
+ * are first).
+ * Caller is responsible for freeing the returned list with g_slist_free().
+ */
+GSList *
+nm_netns_get_activatable_connections (NMNetns *self)
+{
+	GSList *all_connections = nm_settings_get_connections (nm_settings_get ());
+	GSList *connections = NULL, *iter;
+	NMSettingsConnection *connection;
+
+	for (iter = all_connections; iter; iter = iter->next) {
+		connection = iter->data;
+
+		if (!nm_manager_find_ac_for_connection (nm_manager_get (), NM_CONNECTION (connection)))
+			connections = g_slist_prepend (connections, connection);
+	}
+
+	g_slist_free (all_connections);
+	return g_slist_reverse (connections);
+}
+
+/**
+ * ensure_master_active_connection:
+ * @self: the #NMNetns
+ * @subject: the #NMAuthSubject representing the requestor of this activation
+ * @connection: the connection that should depend on @master_connection
+ * @device: the #NMDevice, if any, which will activate @connection
+ * @master_connection: the master connection, or %NULL
+ * @master_device: the master device, or %NULL
+ * @error: the error, if an error occurred
+ *
+ * Determines whether a given #NMConnection depends on another connection to
+ * be activated, and if so, finds that master connection or creates it.
+ *
+ * If @master_device and @master_connection are both set then @master_connection
+ * MUST already be activated or activating on @master_device, and the function will
+ * return the existing #NMActiveConnection.
+ *
+ * If only @master_device is set, and it has an #NMActiveConnection, then the
+ * function will return it if it is a compatible master, or an error if not. If it
+ * doesn't have an AC, then the function will create one if a compatible master
+ * connection exists, or return an error if not.
+ *
+ * If only @master_connection is set, then this will try to find or create a compatible
+ * #NMDevice, and either activate @master_connection on that device or return an error.
+ *
+ * Returns: the master #NMActiveConnection that the caller should depend on, or
+ * %NULL if an error occurred
+ */
+static NMActiveConnection *
+ensure_master_active_connection (NMNetns *self,
+                                 NMAuthSubject *subject,
+                                 NMConnection *connection,
+                                 NMDevice *device,
+                                 NMSettingsConnection *master_connection,
+                                 NMDevice *master_device,
+                                 GError **error)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMActiveConnection *master_ac = NULL;
+	NMDeviceState master_state;
+	GSList *iter;
+
+	g_assert (connection);
+	g_assert (master_connection || master_device);
+
+	/* If the master device isn't activated then we need to activate it using
+	 * compatible connection.  If it's already activating we can just proceed.
+	 */
+	if (master_device) {
+		NMSettingsConnection *device_connection = nm_device_get_settings_connection (master_device);
+
+		/* If we're passed a connection and a device, we require that connection
+		 * be already activated on the device, eg returned from find_master().
+		 */
+		g_assert (!master_connection || master_connection == device_connection);
+		if (device_connection && !is_compatible_with_slave (NM_CONNECTION (device_connection), connection)) {
+			g_set_error (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_DEPENDENCY_FAILED,
+			             "The active connection on %s is not a valid master for '%s'",
+			             nm_device_get_iface (master_device),
+			             nm_connection_get_id (connection));
+			return NULL;
+		}
+
+		master_state = nm_device_get_state (master_device);
+		if (   (master_state == NM_DEVICE_STATE_ACTIVATED)
+		    || nm_device_is_activating (master_device)) {
+			/* Device already using master_connection */
+			g_assert (device_connection);
+			return NM_ACTIVE_CONNECTION (nm_device_get_act_request (master_device));
+		}
+
+		/* If the device is disconnected, find a compatible connection and
+		 * activate it on the device.
+		 */
+		if (master_state == NM_DEVICE_STATE_DISCONNECTED || !nm_device_is_real (master_device)) {
+			GSList *connections;
+
+			g_assert (master_connection == NULL);
+
+			/* Find a compatible connection and activate this device using it */
+			connections = nm_netns_get_activatable_connections (self);
+			for (iter = connections; iter; iter = g_slist_next (iter)) {
+				NMSettingsConnection *candidate = NM_SETTINGS_CONNECTION (iter->data);
+
+				/* Ensure eg bond/team slave and the candidate master is a
+				 * bond/team master
+				 */
+				if (!is_compatible_with_slave (NM_CONNECTION (candidate), connection))
+					continue;
+
+				if (nm_device_check_connection_available (master_device, NM_CONNECTION (candidate), NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST, NULL)) {
+					master_ac = nm_netns_activate_connection (self,
+					                                          candidate,
+					                                          NULL,
+					                                          master_device,
+					                                          subject,
+					                                          error);
+					if (!master_ac)
+						g_prefix_error (error, "%s", "Master device activation failed: ");
+					g_slist_free (connections);
+					return master_ac;
+				}
+			}
+			g_slist_free (connections);
+
+			g_set_error (error,
+			             NM_NETNS_ERROR,
+			             NM_NETNS_ERROR_UNKNOWN_CONNECTION,
+			             "No compatible connection found for master device %s.",
+			             nm_device_get_iface (master_device));
+			return NULL;
+		}
+
+		/* Otherwise, the device is unmanaged, unavailable, or disconnecting */
+		g_set_error (error,
+		             NM_NETNS_ERROR,
+		             NM_NETNS_ERROR_DEPENDENCY_FAILED,
+		             "Master device %s unmanaged or not available for activation",
+		             nm_device_get_iface (master_device));
+	} else if (master_connection) {
+		gboolean found_device = FALSE;
+
+		/* Find a compatible device and activate it using this connection */
+		for (iter = priv->devices; iter; iter = g_slist_next (iter)) {
+			NMDevice *candidate = NM_DEVICE (iter->data);
+
+			if (candidate == device) {
+				/* A device obviously can't be its own master */
+				continue;
+			}
+
+			if (!nm_device_check_connection_available (candidate, NM_CONNECTION (master_connection), NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST, NULL))
+				continue;
+
+			found_device = TRUE;
+			if (!nm_device_is_software (candidate)) {
+				master_state = nm_device_get_state (candidate);
+				if (nm_device_is_real (candidate) && master_state != NM_DEVICE_STATE_DISCONNECTED)
+					continue;
+			}
+
+			master_ac = nm_netns_activate_connection (self,
+			                                            master_connection,
+			                                            NULL,
+			                                            candidate,
+			                                            subject,
+			                                            error);
+			if (!master_ac)
+				g_prefix_error (error, "%s", "Master device activation failed: ");
+			return master_ac;
+		}
+
+		g_set_error (error,
+		             NM_NETNS_ERROR,
+		             NM_NETNS_ERROR_UNKNOWN_DEVICE,
+		             "No compatible disconnected device found for master connection %s.",
+		             nm_settings_connection_get_uuid (master_connection));
+	} else
+		g_assert_not_reached ();
+
+	return NULL;
+}
+
+static gboolean
+should_connect_slaves (NMConnection *connection, NMDevice *device)
+{
+	NMSettingConnection *s_con;
+	NMSettingConnectionAutoconnectSlaves autoconnect_slaves;
+	gs_free char *value = NULL;
+
+	s_con = nm_connection_get_setting_connection (connection);
+	g_assert (s_con);
+
+	/* Check autoconnect-slaves property */
+	autoconnect_slaves = nm_setting_connection_get_autoconnect_slaves (s_con);
+	if (autoconnect_slaves != NM_SETTING_CONNECTION_AUTOCONNECT_SLAVES_DEFAULT)
+		goto out;
+
+	/* Check configuration default for autoconnect-slaves property */
+	value = nm_config_data_get_connection_default (NM_CONFIG_GET_DATA,
+	                                               "connection.autoconnect-slaves", device);
+	if (value)
+		autoconnect_slaves = _nm_utils_ascii_str_to_int64 (value, 10, 0, 1, -1);
+
+out:
+	if (autoconnect_slaves == NM_SETTING_CONNECTION_AUTOCONNECT_SLAVES_NO)
+		return FALSE;
+	if (autoconnect_slaves == NM_SETTING_CONNECTION_AUTOCONNECT_SLAVES_YES)
+		return TRUE;
+	return FALSE;
+}
+
+/**
+ * find_slaves:
+ * @netns: #NMNetns object
+ * @connection: the master #NMSettingsConnection to find slave connections for
+ * @device: the master #NMDevice for the @connection
+ *
+ * Given an #NMSettingsConnection, attempts to find its slaves. If @connection is not
+ * master, or has not any slaves, this will return %NULL.
+ *
+ * Returns: list of slave connections for given master @connection, or %NULL
+ **/
+static GSList *
+find_slaves (NMNetns *netns,
+             NMSettingsConnection *connection,
+             NMDevice *device)
+{
+	GSList *all_connections, *iter;
+	GSList *slaves = NULL;
+	NMSettingConnection *s_con;
+	const char *master;
+
+	s_con = nm_connection_get_setting_connection (NM_CONNECTION (connection));
+	g_assert (s_con);
+	master = nm_setting_connection_get_master (s_con);
+
+	if (master != NULL)
+		return NULL;  /* connection is not master */
+
+	/* Search through all connections, not only inactive ones, because
+	 * even if a slave was already active, it might be deactivated during
+	 * master reactivation.
+	 */
+	all_connections = nm_settings_get_connections (nm_settings_get());
+	for (iter = all_connections; iter; iter = iter->next) {
+		NMSettingsConnection *master_connection = NULL;
+		NMDevice *master_device = NULL;
+		NMConnection *candidate = iter->data;
+
+		find_master (netns, candidate, NULL, &master_connection, &master_device, NULL, NULL);
+		if (   (master_connection && master_connection == connection)
+		    || (master_device && master_device == device)) {
+			slaves = g_slist_prepend (slaves, candidate);
+		}
+        }
+	g_slist_free (all_connections);
+
+	return g_slist_reverse (slaves);
+}
+
+static gboolean
+autoconnect_slaves (NMNetns *self,
+                    NMSettingsConnection *master_connection,
+                    NMDevice *master_device,
+                    NMAuthSubject *subject)
+{
+	GError *local_err = NULL;
+	gboolean ret = FALSE;
+
+	if (should_connect_slaves (NM_CONNECTION (master_connection), master_device)) {
+		GSList *slaves, *iter;
+
+		iter = slaves = find_slaves (self, master_connection, master_device);
+		ret = slaves != NULL;
+
+		while (iter) {
+			NMSettingsConnection *slave_connection = iter->data;
+
+			iter = iter->next;
+			_LOGD (LOGD_CORE, "will activate slave connection '%s' (%s) as a dependency for master '%s' (%s)",
+			       nm_settings_connection_get_id (slave_connection),
+			       nm_settings_connection_get_uuid (slave_connection),
+			       nm_settings_connection_get_id (master_connection),
+			       nm_settings_connection_get_uuid (master_connection));
+
+			/* Schedule slave activation */
+			nm_netns_activate_connection (self,
+			                              slave_connection,
+			                              NULL,
+			                              nm_netns_get_best_device_for_connection (self, NM_CONNECTION (slave_connection), FALSE),
+			                              subject,
+			                              &local_err);
+			if (local_err) {
+				_LOGW (LOGD_CORE, "Slave connection activation failed: %s", local_err->message);
+				g_error_free (local_err);
+			}
+		}
+		g_slist_free (slaves);
+	}
+	return ret;
+}
+
+static gboolean
+_internal_activate_device (NMNetns *self, NMActiveConnection *active, GError **error)
+{
+	NMDevice *device, *existing, *master_device = NULL;
+	NMConnection *applied;
+	NMSettingsConnection *connection;
+	NMSettingsConnection *master_connection = NULL;
+	NMConnection *existing_connection = NULL;
+	NMActiveConnection *master_ac = NULL;
+	NMAuthSubject *subject;
+	char *error_desc = NULL;
+
+	g_return_val_if_fail (NM_IS_NETNS (self), FALSE);
+	g_return_val_if_fail (NM_IS_ACTIVE_CONNECTION (active), FALSE);
+	g_return_val_if_fail (error == NULL || *error == NULL, FALSE);
+
+	g_assert (NM_IS_VPN_CONNECTION (active) == FALSE);
+
+	connection = nm_active_connection_get_settings_connection (active);
+	g_assert (connection);
+
+	applied = nm_active_connection_get_applied_connection (active);
+
+	device = nm_active_connection_get_device (active);
+	g_return_val_if_fail (device != NULL, FALSE);
+
+	/* If the device is active and its connection is not visible to the
+	 * user that's requesting this new activation, fail, since other users
+	 * should not be allowed to implicitly deactivate private connections
+	 * by activating a connection of their own.
+	 */
+	existing_connection = nm_device_get_applied_connection (device);
+	subject = nm_active_connection_get_subject (active);
+	if (existing_connection &&
+	    !nm_auth_is_subject_in_acl (existing_connection,
+	                                subject,
+	                                &error_desc)) {
+		g_set_error (error,
+		             NM_NETNS_ERROR,
+		             NM_NETNS_ERROR_PERMISSION_DENIED,
+		             "Private connection already active on the device: %s",
+		             error_desc);
+		g_free (error_desc);
+		return FALSE;
+	}
+
+	/* Final connection must be available on device */
+	if (!nm_device_check_connection_available (device, applied, NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST, NULL)) {
+		g_set_error (error, NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_CONNECTION,
+		             "Connection '%s' is not available on the device %s at this time.",
+		             nm_settings_connection_get_id (connection), nm_device_get_iface (device));
+		return FALSE;
+	}
+
+	/* Create any backing resources the device needs */
+	if (!nm_device_is_real (device)) {
+		NMDevice *parent;
+
+		parent = find_parent_device_for_connection (self, (NMConnection *) connection);
+		if (!nm_device_create_and_realize (device, (NMConnection *) connection, parent, error)) {
+			g_prefix_error (error, "%s failed to create resources: ", nm_device_get_iface (device));
+			return FALSE;
+		}
+	}
+
+	/* Try to find the master connection/device if the connection has a dependency */
+	if (!find_master (self, applied, device,
+	                  &master_connection, &master_device, &master_ac,
+	                  error))
+		return FALSE;
+
+	/* Ensure there's a master active connection the new connection we're
+	 * activating can depend on.
+	 */
+	if (master_connection || master_device) {
+		if (master_connection) {
+			_LOGD (LOGD_CORE, "Activation of '%s' requires master connection '%s'",
+			       nm_settings_connection_get_id (connection),
+			       nm_settings_connection_get_id (master_connection));
+		}
+		if (master_device) {
+			_LOGD (LOGD_CORE, "Activation of '%s' requires master device '%s'",
+			       nm_settings_connection_get_id (connection),
+			       nm_device_get_ip_iface (master_device));
+		}
+
+		/* Ensure eg bond slave and the candidate master is a bond master */
+		if (master_connection && !is_compatible_with_slave (NM_CONNECTION (master_connection), applied)) {
+			g_set_error_literal (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_DEPENDENCY_FAILED,
+			                     "The master connection was not compatible");
+			return FALSE;
+		}
+
+		if (!master_ac) {
+			master_ac = ensure_master_active_connection (self,
+			                                             nm_active_connection_get_subject (active),
+			                                             applied,
+			                                             device,
+			                                             master_connection,
+			                                             master_device,
+			                                             error);
+			if (!master_ac) {
+				if (error)
+					g_assert (*error);
+				return FALSE;
+			}
+		}
+
+		nm_active_connection_set_master (active, master_ac);
+		_LOGD (LOGD_CORE, "Activation of '%s' depends on active connection %p %s",
+		       nm_settings_connection_get_id (connection),
+		       master_ac,
+		       str_if_set (nm_exported_object_get_path (NM_EXPORTED_OBJECT  (master_ac)), ""));
+	}
+
+	/* Check slaves for master connection and possibly activate them */
+	autoconnect_slaves (self, connection, device, nm_active_connection_get_subject (active));
+
+	/* Disconnect the connection if connected or queued on another device */
+	existing = nm_netns_get_connection_device (self, NM_CONNECTION (connection));
+	if (existing)
+		nm_device_steal_connection (existing, connection);
+
+	/* when creating the software device, it can happen that the device is
+	 * still unmanaged by NM_UNMANAGED_PLATFORM_INIT because we didn't yet
+	 * get the udev event. At this point, we can no longer delay the activation
+	 * and force the device to be managed. */
+	nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_PLATFORM_INIT, FALSE, NM_DEVICE_STATE_REASON_USER_REQUESTED);
+
+	nm_device_set_unmanaged_by_flags (device, NM_UNMANAGED_USER_EXPLICIT, FALSE, NM_DEVICE_STATE_REASON_USER_REQUESTED);
+
+	g_return_val_if_fail (nm_device_get_managed (device, FALSE), FALSE);
+
+	if (nm_device_get_state (device) == NM_DEVICE_STATE_UNMANAGED) {
+		nm_device_state_changed (device,
+		                         NM_DEVICE_STATE_UNAVAILABLE,
+		                         NM_DEVICE_STATE_REASON_USER_REQUESTED);
+	}
+
+	if (   nm_device_is_available (device, NM_DEVICE_CHECK_DEV_AVAILABLE_FOR_USER_REQUEST)
+	    && (nm_device_get_state (device) == NM_DEVICE_STATE_UNAVAILABLE)) {
+		nm_device_state_changed (device,
+		                         NM_DEVICE_STATE_DISCONNECTED,
+		                         NM_DEVICE_STATE_REASON_USER_REQUESTED);
+	}
+
+	/* Export the new ActiveConnection to clients and start it on the device */
+	nm_exported_object_export (NM_EXPORTED_OBJECT (active));
+	g_object_notify (G_OBJECT (self), NM_MANAGER_ACTIVE_CONNECTIONS);
+	nm_device_queue_activation (device, NM_ACT_REQUEST (active));
+	return TRUE;
+}
+
+static void
+active_connection_default_changed (NMActiveConnection *active,
+                                   GParamSpec *pspec,
+                                   NMNetns *self)
+{
+#if 0
+	/*
+	 * TODO/BUG: State is global for NM so NMManager should take care of it!
+	 */
+	nm_manager_update_state (self);
+#endif
+}
+
+/* Returns: whether to notify D-Bus of the removal or not */
+static gboolean
+active_connection_remove (NMNetns *self, NMActiveConnection *active)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	gboolean notify = nm_exported_object_is_exported (NM_EXPORTED_OBJECT (active));
+	GSList *found;
+
+	/* FIXME: switch to a GList for faster removal */
+	found = g_slist_find (priv->active_connections, active);
+	if (found) {
+		NMSettingsConnection *connection;
+
+		priv->active_connections = g_slist_remove (priv->active_connections, active);
+		g_signal_emit (self, signals[ACTIVE_CONNECTION_REMOVED], 0, active);
+		g_signal_handlers_disconnect_by_func (active, active_connection_state_changed, self);
+		g_signal_handlers_disconnect_by_func (active, active_connection_default_changed, self);
+
+		if (   nm_active_connection_get_assumed (active)
+		    && (connection = nm_active_connection_get_settings_connection (active))
+		    && nm_settings_connection_get_nm_generated_assumed (connection))
+			g_object_ref (connection);
+		else
+			connection = NULL;
+
+		nm_exported_object_clear_and_unexport (&active);
+
+		if (   connection
+		    && nm_settings_has_connection (nm_settings_get(), connection)) {
+			_LOGD (LOGD_DEVICE, "assumed connection disconnected. Deleting generated connection '%s' (%s)",
+			       nm_settings_connection_get_id (connection), nm_settings_connection_get_uuid (connection));
+			nm_settings_connection_delete (NM_SETTINGS_CONNECTION (connection), NULL, NULL);
+			g_object_unref (connection);
+		}
+	}
+
+	return found && notify;
+}
+
+static gboolean
+_active_connection_cleanup (gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GSList *iter;
+
+	priv->ac_cleanup_id = 0;
+
+	g_object_freeze_notify (G_OBJECT (self));
+	iter = priv->active_connections;
+	while (iter) {
+		NMActiveConnection *ac = iter->data;
+
+		iter = iter->next;
+		if (nm_active_connection_get_state (ac) == NM_ACTIVE_CONNECTION_STATE_DEACTIVATED) {
+			if (active_connection_remove (self, ac))
+				g_object_notify (G_OBJECT (self), NM_MANAGER_ACTIVE_CONNECTIONS);
+		}
+	}
+	g_object_thaw_notify (G_OBJECT (self));
+
+	return FALSE;
+}
+
+static void
+active_connection_state_changed (NMActiveConnection *active,
+                                 GParamSpec *pspec,
+                                 NMNetns *self)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMActiveConnectionState state;
+
+	state = nm_active_connection_get_state (active);
+	if (state == NM_ACTIVE_CONNECTION_STATE_DEACTIVATED) {
+		/* Destroy active connections from an idle handler to ensure that
+		 * their last property change notifications go out, which wouldn't
+		 * happen if we destroyed them immediately when their state was set
+		 * to DEACTIVATED.
+		 */
+		if (!priv->ac_cleanup_id)
+			priv->ac_cleanup_id = g_idle_add (_active_connection_cleanup, self);
+	}
+
+#if 0
+	/*
+	 * TODO/BUG: State is global for NM so NMManager should take care of it!
+	 */
+	nm_manager_update_state (self);
+#endif
+}
+
+/**
+ * active_connection_add():
+ * @self: the #NMNetns
+ * @active: the #NMActiveConnection to manage
+ *
+ * Begins to track and manage @active.  Increases the refcount of @active.
+ */
+static void
+active_connection_add (NMNetns *self, NMActiveConnection *active)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+
+	g_return_if_fail (g_slist_find (priv->active_connections, active) == FALSE);
+
+	priv->active_connections = g_slist_prepend (priv->active_connections,
+	                                            g_object_ref (active));
+
+	g_signal_connect (active,
+	                  "notify::" NM_ACTIVE_CONNECTION_STATE,
+	                  G_CALLBACK (active_connection_state_changed),
+	                  self);
+	g_signal_connect (active,
+	                  "notify::" NM_ACTIVE_CONNECTION_DEFAULT,
+	                  G_CALLBACK (active_connection_default_changed),
+	                  self);
+	g_signal_connect (active,
+	                  "notify::" NM_ACTIVE_CONNECTION_DEFAULT6,
+	                  G_CALLBACK (active_connection_default_changed),
+	                  self);
+
+	g_signal_emit (self, signals[ACTIVE_CONNECTION_ADDED], 0, active);
+
+	/* Only notify D-Bus if the active connection is actually exported */
+	if (nm_exported_object_is_exported (NM_EXPORTED_OBJECT (active)))
+		g_object_notify (G_OBJECT (self), NM_NETNS_ACTIVE_CONNECTIONS);
+}
+
+#if 0
+static void
+policy_activating_device_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMDevice *activating;
+#if 0
+	NMDevice *activating, *best;
+#endif
+	NMActiveConnection *ac;
+
+#if 0
+	/* We only look at activating-ip6-device if activating-ip4-device
+	 * AND default-ip4-device are NULL; if default-ip4-device is
+	 * non-NULL, then activating-ip6-device is irrelevant, since while
+	 * that device might become the new default-ip6-device, it can't
+	 * become primary-connection while default-ip4-device is set to
+	 * something else.
+	 */
+	activating = nm_policy_get_activating_ip4_device (priv->policy);
+	best = nm_policy_get_default_ip4_device (priv->policy);
+	if (!activating && !best)
+		activating = nm_policy_get_activating_ip6_device (priv->policy);
+#endif
+
+	if (activating)
+		ac = NM_ACTIVE_CONNECTION (nm_device_get_act_request (activating));
+	else
+		ac = NULL;
+
+	if (ac != priv->activating_connection) {
+		g_clear_object (&priv->activating_connection);
+		priv->activating_connection = ac ? g_object_ref (ac) : NULL;
+		_LOGD (LOGD_CORE, "ActivatingConnection now %s", ac ? nm_active_connection_get_settings_connection_id (ac) : "(none)");
+		g_object_notify (G_OBJECT (self), NM_NETNS_ACTIVATING_CONNECTION);
+	}
+}
+#endif
+
+#if 0
+static void
+nm_netns_update_metered (NMNetns *self)
+{
+	NMNetnsPrivate *priv;
+	NMDevice *device;
+	NMMetered value = NM_METERED_UNKNOWN;
+
+	g_return_if_fail (NM_IS_MANAGER (self));
+	priv = NM_NETNS_GET_PRIVATE (self);
+
+	if (priv->primary_connection) {
+		device =  nm_active_connection_get_device (priv->primary_connection);
+		if (device)
+			value = nm_device_get_metered (device);
+	}
+
+	if (value != priv->metered) {
+		priv->metered = value;
+		_LOGD (LOGD_CORE, "new metered value: %d", (int) priv->metered);
+		g_object_notify (G_OBJECT (self), NM_NETNS_METERED);
+	}
+}
+#endif
+
+#if 0
+static void
+policy_default_device_changed (GObject *object, GParamSpec *pspec, gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+        NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+#if 0
+	NMDevice *best;
+#endif
+	NMActiveConnection *ac;
+
+#if 0
+	/* Note: this assumes that it's not possible for the IP4 default
+	 * route to be going over the default-ip6-device. If that changes,
+	 * we need something more complicated here.
+	 */
+	best = nm_policy_get_default_ip4_device (priv->policy);
+	if (!best)
+		best = nm_policy_get_default_ip6_device (priv->policy);
+
+	if (best)
+		ac = NM_ACTIVE_CONNECTION (nm_device_get_act_request (best));
+	else
+		ac = NULL;
+#endif
+
+	if (ac != priv->primary_connection) {
+		if (priv->primary_connection) {
+			g_signal_handlers_disconnect_by_func (priv->primary_connection,
+			                                      G_CALLBACK (connection_metered_changed),
+			                                      self);
+			g_clear_object (&priv->primary_connection);
+		}
+
+		priv->primary_connection = ac ? g_object_ref (ac) : NULL;
+
+		if (priv->primary_connection) {
+			g_signal_connect (priv->primary_connection, NM_ACTIVE_CONNECTION_DEVICE_METERED_CHANGED,
+			                  G_CALLBACK (connection_metered_changed), self);
+		}
+		_LOGD (LOGD_CORE, "PrimaryConnection now %s", ac ? nm_active_connection_get_settings_connection_id (ac) : "(none)");
+		g_object_notify (G_OBJECT (self), NM_MANAGER_PRIMARY_CONNECTION);
+		g_object_notify (G_OBJECT (self), NM_MANAGER_PRIMARY_CONNECTION_TYPE);
+		nm_netns_update_metered (self);
+        }
+}
+#endif
+
+static gboolean
+_internal_activate_generic (NMNetns *self, NMActiveConnection *active, GError **error)
+{
+#if 0
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+#endif
+	gboolean success = FALSE;
+
+	/* Ensure activation request is still valid, eg that its device hasn't gone
+	 * away or that some other dependency has not failed.
+	 */
+	if (nm_active_connection_get_state (active) >= NM_ACTIVE_CONNECTION_STATE_DEACTIVATING) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_DEPENDENCY_FAILED,
+		                     "Activation failed because dependencies failed.");
+		return FALSE;
+	}
+
+	if (NM_IS_VPN_CONNECTION (active))
+		success = _internal_activate_vpn (self, active, error);
+	else
+		success = _internal_activate_device (self, active, error);
+
+	if (success) {
+		/* Force an update of the Manager's activating-connection property.
+		 * The device changes state before the AC gets exported, which causes
+		 * the manager's 'activating-connection' property to be NULL since the
+		 * AC only gets a D-Bus path when it's exported.  So now that the AC
+		 * is exported, make sure the manager's activating-connection property
+		 * is up-to-date.
+		 */
+
+		active_connection_add (self, active);
+#if 0
+		policy_activating_device_changed (G_OBJECT (priv->policy), NULL, self);
+#endif
+	}
+
+	return success;
+}
+
+static void
+_internal_activation_failed (NMNetns *self,
+                             NMActiveConnection *active,
+                             const char *error_desc)
+{
+	_LOGD (LOGD_CORE, "Failed to activate '%s': %s",
+	       nm_active_connection_get_settings_connection_id (active),
+	       error_desc);
+
+	if (nm_active_connection_get_state (active) <= NM_ACTIVE_CONNECTION_STATE_ACTIVATED) {
+		nm_active_connection_set_state (active, NM_ACTIVE_CONNECTION_STATE_DEACTIVATING);
+		nm_active_connection_set_state (active, NM_ACTIVE_CONNECTION_STATE_DEACTIVATED);
+	}
+}
+
+static void
+_internal_activation_auth_done (NMActiveConnection *active,
+                                gboolean success,
+                                const char *error_desc,
+                                gpointer user_data1,
+                                gpointer user_data2)
+{
+	NMNetns *self = user_data1;
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GError *error = NULL;
+
+	priv->authorizing_connections = g_slist_remove (priv->authorizing_connections, active);
+
+	if (success) {
+		if (_internal_activate_generic (self, active, &error)) {
+			g_object_unref (active);
+			return;
+		}
+	}
+
+	g_assert (error_desc || error);
+	_internal_activation_failed (self, active, error_desc ? error_desc : error->message);
+	g_object_unref (active);
+	g_clear_error (&error);
+}
+
+/**
+ * nm_manager_activate_connection():
+ * @self: the #NMNetns
+ * @connection: the #NMSettingsConnection to activate on @device
+ * @specific_object: the specific object path, if any, for the activation
+ * @device: the #NMDevice to activate @connection on
+ * @subject: the subject which requested activation
+ * @error: return location for an error
+ *
+ * Begins a new internally-initiated activation of @connection on @device.
+ * @subject should be the subject of the activation that triggered this
+ * one, or if this is an autoconnect request, a new internal subject.
+ * The returned #NMActiveConnection is owned by the Manager and should be
+ * referenced by the caller if the caller continues to use it.
+ *
+ * Returns: (transfer none): the new #NMActiveConnection that tracks
+ * activation of @connection on @device
+ */
+NMActiveConnection *
+nm_netns_activate_connection (NMNetns *self,
+                              NMSettingsConnection *connection,
+                              const char *specific_object,
+                              NMDevice *device,
+                              NMAuthSubject *subject,
+                              GError **error)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMActiveConnection *active;
+	char *error_desc = NULL;
+	GSList *iter;
+
+	g_return_val_if_fail (self != NULL, NULL);
+	g_return_val_if_fail (connection != NULL, NULL);
+	g_return_val_if_fail (error != NULL, NULL);
+	g_return_val_if_fail (*error == NULL, NULL);
+
+	/* Ensure the subject has permissions for this connection */
+	if (!nm_auth_is_subject_in_acl (NM_CONNECTION (connection),
+	                                subject,
+	                                &error_desc)) {
+		g_set_error_literal (error,
+		                     NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_PERMISSION_DENIED,
+		                     error_desc);
+		g_free (error_desc);
+		return NULL;
+	}
+
+	/* Look for a active connection that's equivalent and is already pending authorization
+	 * and eventual activation. This is used to de-duplicate concurrent activations which would
+	 * otherwise race and cause the device to disconnect and reconnect repeatedly.
+	 * In particular, this allows the master and multiple slaves to concurrently auto-activate
+	 * while all the slaves would use the same active-connection. */
+	for (iter = priv->authorizing_connections; iter; iter = g_slist_next (iter)) {
+		active = iter->data;
+
+		if (   connection == nm_active_connection_get_settings_connection (active)
+		    && g_strcmp0 (nm_active_connection_get_specific_object (active), specific_object) == 0
+		    && nm_active_connection_get_device (active) == device
+		    && nm_auth_subject_is_internal (nm_active_connection_get_subject (active))
+		    && nm_auth_subject_is_internal (subject))
+			return active;
+	}
+
+	active = _new_active_connection (self,
+	                                 NM_CONNECTION (connection),
+	                                 specific_object,
+	                                 device,
+	                                 subject,
+	                                 error);
+
+	if (active) {
+		priv->authorizing_connections = g_slist_prepend (priv->authorizing_connections, active);
+		nm_active_connection_authorize (active, NULL, _internal_activation_auth_done, self, NULL);
+	}
+
+	return active;
+}
+
+static void
+_activation_auth_done (NMActiveConnection *active,
+                       gboolean success,
+                       const char *error_desc,
+                       gpointer user_data1,
+                       gpointer user_data2)
+{
+	NMNetns *self = user_data1;
+	GDBusMethodInvocation *context = user_data2;
+	GError *error = NULL;
+	NMAuthSubject *subject;
+	NMSettingsConnection *connection;
+
+	subject = nm_active_connection_get_subject (active);
+	connection = nm_active_connection_get_settings_connection (active);
+
+	if (success) {
+		if (_internal_activate_generic (self, active, &error)) {
+			g_dbus_method_invocation_return_value (context,
+			                                       g_variant_new ("(o)",
+			                                       nm_exported_object_get_path (NM_EXPORTED_OBJECT (active))));
+			nm_audit_log_connection_op (NM_AUDIT_OP_CONN_ACTIVATE, connection, TRUE,
+			                            subject, NULL);
+			g_object_unref (active);
+			return;
+		}
+	} else {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_PERMISSION_DENIED,
+		                             error_desc);
+	}
+
+        g_assert (error);
+        nm_audit_log_connection_op (NM_AUDIT_OP_CONN_ACTIVATE, connection, FALSE,
+                                    subject, error->message);
+        _internal_activation_failed (self, active, error->message);
+
+        g_object_unref (active);
+        g_dbus_method_invocation_take_error (context, error);
+}
+
+static void
+impl_netns_activate_connection (NMNetns *self,
+                                GDBusMethodInvocation *context,
+                                const char *connection_path,
+                                const char *device_path,
+                                const char *specific_object_path)
+{
+	NMActiveConnection *active = NULL;
+	NMAuthSubject *subject = NULL;
+	NMSettingsConnection *connection = NULL;
+	NMDevice *device = NULL;
+	gboolean is_vpn = FALSE;
+	GError *error = NULL;
+
+	/* Normalize object paths */
+	if (g_strcmp0 (connection_path, "/") == 0)
+		connection_path = NULL;
+	if (g_strcmp0 (specific_object_path, "/") == 0)
+		specific_object_path = NULL;
+	if (g_strcmp0 (device_path, "/") == 0)
+		device_path = NULL;
+
+        /* If the connection path is given and valid, that connection is activated.
+	 * Otherwise the "best" connection for the device is chosen and activated,
+	 * regardless of whether that connection is autoconnect-enabled or not
+	 * (since this is an explicit request, not an auto-activation request).
+	 */
+	if (!connection_path) {
+		GPtrArray *available;
+		guint64 best_timestamp = 0;
+		guint i;
+
+		/* If no connection is given, find a suitable connection for the given device path */
+		if (!device_path) {
+			error = g_error_new_literal (NM_MANAGER_ERROR, NM_MANAGER_ERROR_UNKNOWN_DEVICE,
+			                             "Only devices may be activated without a specifying a connection");
+			goto error;
+		}
+		device = nm_netns_get_device_by_path (self, device_path);
+		if (!device) {
+			error = g_error_new (NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_DEVICE,
+			                     "Cannot activate unknown device %s", device_path);
+			goto error;
+		}
+
+		available = nm_device_get_available_connections (device, specific_object_path);
+		for (i = 0; available && i < available->len; i++) {
+			NMSettingsConnection *candidate = g_ptr_array_index (available, i);
+			guint64 candidate_timestamp = 0;
+
+			nm_settings_connection_get_timestamp (candidate, &candidate_timestamp);
+			if (!connection_path || (candidate_timestamp > best_timestamp)) {
+				connection_path = nm_connection_get_path (NM_CONNECTION (candidate));
+				best_timestamp = candidate_timestamp;
+			}
+		}
+
+		if (available)
+			g_ptr_array_free (available, TRUE);
+
+		if (!connection_path) {
+			error = g_error_new_literal (NM_NETNS_ERROR,
+			                             NM_NETNS_ERROR_UNKNOWN_CONNECTION,
+			                             "The device has no connections available.");
+			goto error;
+		}
+	}
+
+	g_assert (connection_path);
+	connection = nm_settings_get_connection_by_path (nm_settings_get(), connection_path);
+	if (!connection) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_UNKNOWN_CONNECTION,
+		                             "Connection could not be found.");
+		goto error;
+	}
+
+	subject = validate_activation_request (self,
+	                                       context,
+	                                       NM_CONNECTION (connection),
+	                                       device_path,
+	                                       &device,
+	                                       &is_vpn,
+	                                       &error);
+	if (!subject)
+		goto error;
+
+	active = _new_active_connection (self,
+	                                 NM_CONNECTION (connection),
+	                                 specific_object_path,
+	                                 device,
+	                                 subject,
+	                                 &error);
+	if (!active)
+		goto error;
+
+	nm_active_connection_authorize (active, NULL, _activation_auth_done, self, context);
+	g_clear_object (&subject);
+	return;
+
+error:
+	if (connection) {
+		nm_audit_log_connection_op (NM_AUDIT_OP_CONN_ACTIVATE, connection, FALSE,
+		                            subject, error->message);
+	}
+	g_clear_object (&active);
+	g_clear_object (&subject);
+
+	g_assert (error);
+	g_dbus_method_invocation_take_error (context, error);
+}
+
+
+/******************************************************************/
+
+#if 0
+static void
+system_hostname_changed_cb (NMSettings *settings,
+                            GParamSpec *pspec,
+                            gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	char *hostname;
+
+	hostname = nm_settings_get_hostname (nm_settings_get());
+
+	/* nm_settings_get_hostname() does not return an empty hostname. */
+	nm_assert (!hostname || *hostname);
+
+	if (!hostname && !priv->hostname)
+		return;
+	if (hostname && priv->hostname && !strcmp (hostname, priv->hostname)) {
+		g_free (hostname);
+		return;
+	}
+
+	/* realloc, to free possibly trailing data after NUL. */
+	if (hostname)
+		hostname = g_realloc (hostname, strlen (hostname) + 1);
+
+	g_free (priv->hostname);
+	priv->hostname = hostname;
+
+	g_object_notify (G_OBJECT (self), NM_NETNS_HOSTNAME);
+
+        nm_dhcp_manager_set_default_hostname (nm_dhcp_manager_get (), priv->hostname);
+}
+#endif
+
 static NMDevice *
 find_device_by_hw_addr (NMNetns *netns, const char *hwaddr)
 {
@@ -1233,58 +2774,6 @@ find_device_by_hw_addr (NMNetns *netns, const char *hwaddr)
 		}
 	}
 	return NULL;
-}
-
-static NMDevice *
-find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
-{
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
-	NMDeviceFactory *factory; 
-	const char *parent_name = NULL;
-	NMSettingsConnection *parent_connection;
-	NMDevice *parent, *first_compatible = NULL;
-	GSList *iter;
-
-	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
-
-	factory = nm_device_factory_manager_find_factory_for_connection (connection);
-	if (!factory)
-		return NULL;
-
-	parent_name = nm_device_factory_get_connection_parent (factory, connection);
-	if (!parent_name)
-		return NULL;
-
-	/* Try as an interface name of a parent device */ 
-	parent = find_device_by_iface (self, parent_name, NULL, NULL);
-	if (parent)
-		return parent;
-
-	/* Maybe a hardware address */
-	parent = find_device_by_hw_addr (self, parent_name);
-	if (parent)
-		return parent;
-
-	/* Maybe a connection UUID */
-	parent_connection = nm_settings_get_connection_by_uuid (nm_settings_get(), parent_name);
-	if (!parent_connection)
-		return NULL;
-
-	/* Check if the parent connection is currently activated or is comaptible
-	 * with some known device.
-	 */ 
-	for (iter = priv->devices; iter; iter = iter->next) {
-		NMDevice *candidate = iter->data;
-
-		if (nm_device_get_settings_connection (candidate) == parent_connection)
-			return candidate;
-
-		if (   !first_compatible
-		    && nm_device_check_connection_compatible (candidate, NM_CONNECTION (parent_connection)))
-			first_compatible = candidate;
-	}
-
-	return first_compatible;
 }
 
 /**
@@ -1429,7 +2918,7 @@ system_create_virtual_device (NMNetns *self, NMConnection *connection)
 			return NULL;
 		}
 
-		/* Add device takes a reference that NMManager still owns, so it's
+		/* Add device takes a reference that NMNetns still owns, so it's
 		 * safe to unref here and still return @device.
 		 */
 		g_object_unref (device);
@@ -1461,6 +2950,58 @@ system_create_virtual_device (NMNetns *self, NMConnection *connection)
 	}
 
 	return device;
+}
+
+static NMDevice *
+find_parent_device_for_connection (NMNetns *self, NMConnection *connection)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMDeviceFactory *factory; 
+	const char *parent_name = NULL;
+	NMSettingsConnection *parent_connection;
+	NMDevice *parent, *first_compatible = NULL;
+	GSList *iter;
+
+	g_return_val_if_fail (NM_IS_CONNECTION (connection), NULL);
+
+	factory = nm_device_factory_manager_find_factory_for_connection (connection);
+	if (!factory)
+		return NULL;
+
+	parent_name = nm_device_factory_get_connection_parent (factory, connection);
+	if (!parent_name)
+		return NULL;
+
+	/* Try as an interface name of a parent device */ 
+	parent = find_device_by_iface (self, parent_name, NULL, NULL);
+	if (parent)
+		return parent;
+
+	/* Maybe a hardware address */
+	parent = find_device_by_hw_addr (self, parent_name);
+	if (parent)
+		return parent;
+
+	/* Maybe a connection UUID */
+	parent_connection = nm_settings_get_connection_by_uuid (nm_settings_get(), parent_name);
+	if (!parent_connection)
+		return NULL;
+
+	/* Check if the parent connection is currently activated or is comaptible
+	 * with some known device.
+	 */ 
+	for (iter = priv->devices; iter; iter = iter->next) {
+		NMDevice *candidate = iter->data;
+
+		if (nm_device_get_settings_connection (candidate) == parent_connection)
+			return candidate;
+
+		if (   !first_compatible
+		    && nm_device_check_connection_compatible (candidate, NM_CONNECTION (parent_connection)))
+			first_compatible = candidate;
+	}
+
+	return first_compatible;
 }
 
 static void
@@ -1600,6 +3141,9 @@ nm_netns_init (NMNetns *self)
 	g_signal_connect (priv->connectivity, "notify::" NM_CONNECTIVITY_STATE,
 	                  G_CALLBACK (connectivity_changed), self);
 #endif
+
+	/* Load VPN plugins */
+	priv->vpn_manager = g_object_ref (nm_vpn_manager_get ());
 }
 
 static gboolean
@@ -1614,6 +3158,7 @@ get_property (GObject *object, guint prop_id,
 {
 	NMNetns *self = NM_NETNS (object);
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	const char *type;
 
 	switch (prop_id) {
 	case PROP_NAME:
@@ -1624,6 +3169,26 @@ get_property (GObject *object, guint prop_id,
 		break;
 	case PROP_ALL_DEVICES:
 		nm_utils_g_value_set_object_path_array (value, priv->devices, NULL, NULL);
+		break;
+	case PROP_PRIMARY_CONNECTION:
+		nm_utils_g_value_set_object_path (value, priv->primary_connection);
+		break;
+	case PROP_PRIMARY_CONNECTION_TYPE:
+		type = NULL;
+		if (priv->primary_connection) {
+			NMConnection *con;
+
+			con = nm_active_connection_get_applied_connection (priv->primary_connection);
+			if (con)
+				type = nm_connection_get_connection_type (con);
+		}
+		g_value_set_string (value, type ? type : "");
+		break;
+	case PROP_ACTIVATING_CONNECTION:
+		nm_utils_g_value_set_object_path (value, priv->activating_connection);
+		break;
+	case PROP_METERED:
+		g_value_set_uint (value, priv->metered);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1657,6 +3222,8 @@ finalize (GObject *object)
 		g_signal_handlers_disconnect_by_func (priv->config, _config_changed_cb, netns);
 		g_clear_object (&priv->config);
 	}
+
+	g_clear_object (&priv->vpn_manager);
 
 #if 0
 	if (priv->connectivity) {
@@ -1719,6 +3286,41 @@ nm_netns_class_init (NMNetnsClass *klass)
 				     G_PARAM_READABLE |
 				     G_PARAM_STATIC_STRINGS));
 
+	g_object_class_install_property
+		(object_class, PROP_PRIMARY_CONNECTION,
+		 g_param_spec_string (NM_NETNS_PRIMARY_CONNECTION, "", "",
+		                      NULL,
+		                      G_PARAM_READABLE |
+		                      G_PARAM_STATIC_STRINGS));
+
+	g_object_class_install_property
+		(object_class, PROP_PRIMARY_CONNECTION_TYPE,
+		 g_param_spec_string (NM_NETNS_PRIMARY_CONNECTION_TYPE, "", "",
+		                      NULL,
+		                      G_PARAM_READABLE |
+		                      G_PARAM_STATIC_STRINGS));
+
+	g_object_class_install_property
+		(object_class, PROP_ACTIVATING_CONNECTION,
+		 g_param_spec_string (NM_NETNS_ACTIVATING_CONNECTION, "", "",
+		                      NULL,
+		                      G_PARAM_READABLE |
+		                      G_PARAM_STATIC_STRINGS));
+
+	/**
+	 * NMManager:metered:
+	 *
+	 * Whether the connectivity is metered.
+	 *
+	 * Since: 1.2
+	 **/
+	g_object_class_install_property
+		(object_class, PROP_METERED,
+		 g_param_spec_uint (NM_NETNS_METERED, "", "",
+		                    0, G_MAXUINT32, NM_METERED_UNKNOWN,
+		                    G_PARAM_READABLE |
+		                    G_PARAM_STATIC_STRINGS));
+
 	/* Signals */
         signals[DEVICE_ADDED] =
                 g_signal_new (NM_NETNS_DEVICE_ADDED,
@@ -1748,11 +3350,26 @@ nm_netns_class_init (NMNetnsClass *klass)
                               0, NULL, NULL, NULL,
                               G_TYPE_NONE, 1, NM_TYPE_DEVICE);
 
+	signals[ACTIVE_CONNECTION_ADDED] =
+		g_signal_new (NM_NETNS_ACTIVE_CONNECTION_ADDED,
+		              G_OBJECT_CLASS_TYPE (object_class),
+		              G_SIGNAL_RUN_FIRST,
+		              0, NULL, NULL, NULL,
+		              G_TYPE_NONE, 1, NM_TYPE_ACTIVE_CONNECTION);
+
+	signals[ACTIVE_CONNECTION_REMOVED] =
+		g_signal_new (NM_NETNS_ACTIVE_CONNECTION_REMOVED,
+		              G_OBJECT_CLASS_TYPE (object_class),
+		              G_SIGNAL_RUN_FIRST,
+		              0, NULL, NULL, NULL,
+		              G_TYPE_NONE, 1, NM_TYPE_ACTIVE_CONNECTION);
+
 	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
 						NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,
 						"GetDevices", impl_netns_get_devices,
 						"GetAllDevices", impl_netns_get_all_devices,
 						"TakeDevice", impl_netns_take_device,
+	                                        "ActivateConnection", impl_netns_activate_connection,
 						NULL);
 }
 

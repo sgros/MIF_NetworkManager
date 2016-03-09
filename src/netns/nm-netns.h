@@ -63,6 +63,8 @@
 #define NM_NETNS_DEVICE_REMOVED			"netns-device-removed"
 #define NM_NETNS_INTERNAL_DEVICE_ADDED		"netns-internal-device-added"
 #define NM_NETNS_INTERNAL_DEVICE_REMOVED	"netns-internal-device-removed"
+#define NM_NETNS_ACTIVE_CONNECTION_ADDED        "netns-active-connection-added"
+#define NM_NETNS_ACTIVE_CONNECTION_REMOVED      "netns-active-connection-removed"
 
 struct _NMNetns {
 	NMExportedObject parent_instance;
@@ -82,6 +84,14 @@ NMDevice *nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex);
 NMDevice *nm_netns_get_device_by_path (NMNetns *self, const char *device_path);
 
 char *nm_netns_get_connection_iface (NMNetns *self, NMConnection *connection, NMDevice **out_parent, GError **error);
+
+GSList *nm_netns_get_activatable_connections (NMNetns *self);
+NMActiveConnection *nm_netns_activate_connection (NMNetns *self,
+                                                  NMSettingsConnection *connection,
+                                                  const char *specific_object,
+                                                  NMDevice *device,
+                                                  NMAuthSubject *subject,
+                                                  GError **error);
 
 void nm_netns_set_name (NMNetns *netns, const char *name);
 const char *nm_netns_get_name (NMNetns *netns);
@@ -106,6 +116,8 @@ gboolean nm_netns_take_device (NMNetns *self, NMDevice *device, int timeout, voi
 void nm_netns_device_change_callback_activate_and_remove(NMNetns *self, NMDevice *device);
 
 NMNetns *nm_netns_new (const char *netns_name);
+
+const GSList *nm_netns_get_devices (NMNetns *netns);
 
 gboolean nm_netns_setup (NMNetns *netns, gboolean isroot);
 

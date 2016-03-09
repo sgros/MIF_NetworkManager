@@ -369,8 +369,8 @@ nm_manager_get_active_connections (NMManager *manager)
 	return NM_MANAGER_GET_PRIVATE (manager)->active_connections;
 }
 
-static NMActiveConnection *
-find_ac_for_connection (NMManager *manager, NMConnection *connection)
+NMActiveConnection *
+nm_manager_find_ac_for_connection (NMManager *manager, NMConnection *connection)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (manager);
 	GSList *iter;
@@ -420,7 +420,7 @@ nm_manager_get_activatable_connections (NMManager *manager)
 	for (iter = all_connections; iter; iter = iter->next) {
 		connection = iter->data;
 
-		if (!find_ac_for_connection (manager, NM_CONNECTION (connection)))
+		if (!nm_manager_find_ac_for_connection (manager, NM_CONNECTION (connection)))
 			connections = g_slist_prepend (connections, connection);
 	}
 
@@ -428,8 +428,8 @@ nm_manager_get_activatable_connections (NMManager *manager)
 	return g_slist_reverse (connections);
 }
 
-static NMActiveConnection *
-active_connection_get_by_path (NMManager *manager, const char *path)
+NMActiveConnection *
+nm_manager_active_connection_get_by_path (NMManager *manager, const char *path)
 {
 	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (manager);
 	GSList *iter;
@@ -462,6 +462,14 @@ _config_changed_cb (NMConfig *config, NMConfigData *config_data, NMConfigChangeF
 }
 
 /************************************************************************/
+
+NMActiveConnection *
+nm_manager_get_primary_connection (NMManager *manager)
+{
+	NMManagerPrivate *priv = NM_MANAGER_GET_PRIVATE (manager);
+
+	return priv->primary_connection;
+}
 
 NMDevice *
 nm_manager_get_device_by_path (NMManager *manager, const char *path)
@@ -2194,7 +2202,7 @@ static NMDevice *
 nm_manager_get_connection_device (NMManager *self,
                                   NMConnection *connection)
 {
-	NMActiveConnection *ac = find_ac_for_connection (self, connection);
+	NMActiveConnection *ac = nm_manager_find_ac_for_connection (self, connection);
 	if (ac == NULL)
 		return NULL;
 
@@ -2411,7 +2419,7 @@ find_master (NMManager *self,
 	if (out_master_device)
 		*out_master_device = master_device;
 	if (out_master_ac && master_connection)
-		*out_master_ac = find_ac_for_connection (self, NM_CONNECTION (master_connection));
+		*out_master_ac = nm_manager_find_ac_for_connection (self, NM_CONNECTION (master_connection));
 
 	if (master_device || master_connection)
 		return TRUE;
@@ -2928,7 +2936,7 @@ _new_vpn_active_connection (NMManager *self,
 
 	if (specific_object) {
 		/* Find the specific connection the client requested we use */
-		parent = active_connection_get_by_path (self, specific_object);
+		parent = nm_manager_active_connection_get_by_path (self, specific_object);
 		if (!parent) {
 			g_set_error_literal (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_CONNECTION_NOT_ACTIVE,
 			                     "Base connection for VPN connection not active.");
@@ -2972,7 +2980,7 @@ _new_active_connection (NMManager *self,
 	g_return_val_if_fail (NM_IS_AUTH_SUBJECT (subject), NULL);
 
 	/* Can't create new AC for already-active connection */
-	existing_ac = find_ac_for_connection (self, connection);
+	existing_ac = nm_manager_find_ac_for_connection (self, connection);
 	if (NM_IS_VPN_CONNECTION (existing_ac)) {
 		g_set_error (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_CONNECTION_ALREADY_ACTIVE,
 		             "Connection '%s' is already active",
@@ -3625,7 +3633,7 @@ nm_manager_deactivate_connection (NMManager *manager,
 	NMActiveConnection *active;
 	gboolean success = FALSE;
 
-	active = active_connection_get_by_path (manager, connection_path);
+	active = nm_manager_active_connection_get_by_path (manager, connection_path);
 	if (!active) {
 		g_set_error_literal (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_CONNECTION_NOT_ACTIVE,
 		                     "The connection was not active.");
@@ -3695,7 +3703,7 @@ deactivate_net_auth_done_cb (NMAuthChain *chain,
 			nm_assert (error);
 	}
 
-	active = active_connection_get_by_path (self, path);
+	active = nm_manager_active_connection_get_by_path (self, path);
 	if (active) {
 		nm_audit_log_connection_op (NM_AUDIT_OP_CONN_DEACTIVATE,
 		                            nm_active_connection_get_settings_connection (active),
@@ -3726,7 +3734,7 @@ impl_manager_deactivate_connection (NMManager *self,
 	char *error_desc = NULL;
 
 	/* Find the connection by its object path */
-	ac = active_connection_get_by_path (self, active_path);
+	ac = nm_manager_active_connection_get_by_path (self, active_path);
 	if (ac)
 		connection = nm_active_connection_get_settings_connection (ac);
 

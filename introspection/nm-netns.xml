@@ -51,6 +51,44 @@
       </arg>
     </method>
 
+    <method name="ActivateConnection">
+      <tp:docstring>
+        Activate a connection using the supplied device.
+      </tp:docstring>
+      <arg name="connection" type="o" direction="in">
+        <tp:docstring>
+          The connection to activate.  If "/" is given, a valid device path must
+          be given, and NetworkManager picks the best connection to activate for
+          the given device.  VPN connections must always pass a valid connection
+          path.
+        </tp:docstring>
+      </arg>
+      <arg name="device" type="o" direction="in">
+        <tp:docstring>
+          The object path of device to be activated for physical connections.
+          This parameter is ignored for VPN connections, because the
+          specific_object (if provided) specifies the device to use.
+        </tp:docstring>
+      </arg>
+      <arg name="specific_object" type="o" direction="in">
+        <tp:docstring>
+          The path of a connection-type-specific object this activation should use.
+          This parameter is currently ignored for wired and mobile broadband connections,
+          and the value of "/" should be used (ie, no specific object).  For WiFi
+          connections, pass the object path of a specific AP from the card's scan
+          list, or "/" to pick an AP automatically.  For VPN connections, pass
+          the object path of an ActiveConnection object that should serve as the
+          "base" connection (to which the VPN connections lifetime will be tied),
+          or pass "/" and NM will automatically use the current default device.
+        </tp:docstring>
+      </arg>
+      <arg name="active_connection" type="o" direction="out">
+        <tp:docstring>
+          The path of the active connection object representing this active connection.
+        </tp:docstring>
+      </arg>
+    </method>
+
     <property name="Name" type="s" access="read">
       <tp:docstring>
       Name of the network namespace, as created in directory /var/run/netns.
@@ -71,6 +109,41 @@
         namespace. Un-realized devices are software devices which do not yet
         have backing resources, but for which backing resources can be created
         if the device is activated.
+      </tp:docstring>
+    </property>
+
+    <property name="PrimaryConnection" type="o" access="read">
+      <tp:docstring>
+        The object path of the "primary" active connection being used
+        to access the network. In particular, if there is no VPN
+        active, or the VPN does not have the default route, then this
+        indicates the connection that has the default route. If there
+        is a VPN active with the default route, then this indicates
+        the connection that contains the route to the VPN endpoint.
+      </tp:docstring>
+    </property>
+
+    <property name="PrimaryConnectionType" type="s" access="read">
+      <tp:docstring>
+        The connection type of the "primary" active connection being
+        used to access the network. This is the same as the Type
+        property on the object indicated by PrimaryConnection.
+      </tp:docstring>
+    </property>
+
+    <property name="ActivatingConnection" type="o" access="read">
+      <tp:docstring>
+        The object path of an active connection that is currently
+        being activated and which is expected to become the new
+        PrimaryConnection when it finishes activating.
+      </tp:docstring>
+    </property>
+
+    <property name="Metered" type="u" access="read" tp:type="NM_METERED">
+      <tp:docstring>
+        Indicates whether the connectivity is metered. This is equivalent
+        to the metered property of the device associated with the primary
+        connection.
       </tp:docstring>
     </property>
 

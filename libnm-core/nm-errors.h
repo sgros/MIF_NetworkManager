@@ -337,6 +337,11 @@ typedef enum {
 	NM_NETNS_ERROR_UNKNOWN_DEVICE,              /*< nick=UnknownDevice >*/
 	NM_NETNS_ERROR_TARGET_NETNS_NOT_FOUND,      /*< nick=TargetNetnsNotFound >*/
 	NM_NETNS_ERROR_DEVICE_ALREADY_IN_NETNS,     /*< nick=DeviceAlreadyInTargetNetns >*/
+	NM_NETNS_ERROR_UNKNOWN_CONNECTION,          /*< nick=UnknownConnection >*/
+	NM_NETNS_ERROR_CONNECTION_NOT_AVAILABLE,    /*< nick=ConnectionNotAvailable >*/
+	NM_NETNS_ERROR_CONNECTION_NOT_ACTIVE,       /*< nick=ConnectionNotActive >*/
+	NM_NETNS_ERROR_CONNECTION_ALREADY_ACTIVE,   /*< nick=ConnectionAlreadyActive >*/
+	NM_NETNS_ERROR_DEPENDENCY_FAILED,           /*< nick=DependencyFailed >*/
 } NMNetnsError;
 
 #define NM_NETNS_ERROR (nm_netns_error_quark ())
