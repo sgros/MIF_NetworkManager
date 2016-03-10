@@ -3571,7 +3571,7 @@ impl_manager_add_and_activate_connection (NMManager *self,
 	if (!subject)
 		goto error;
 
-	all_connections = nm_settings_get_connections (nm_settings_get());
+	all_connections = nm_settings_get_connections (nm_settings_get ());
 	if (vpn) {
 		/* Try to fill the VPN's connection setting and name at least */
 		if (!nm_connection_get_setting_vpn (connection)) {

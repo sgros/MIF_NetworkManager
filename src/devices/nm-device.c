@@ -5774,6 +5774,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 	if (changed & NM_RDISC_CONFIG_MTU)
 		priv->ip6_mtu = rdisc->mtu;
 
+#if 0
 	if (changed & NM_RDISC_CONFIG_PVD) {
 		NMIP6Config *pvd;
 		GHashTableIter iter;
@@ -5911,6 +5912,7 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 		if (notify)
 			g_object_notify (G_OBJECT (self), NM_DEVICE_PVDS);
 	}
+#endif
 
 	nm_device_activate_schedule_ip6_config_result (self);
 }

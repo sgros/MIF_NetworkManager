@@ -57,7 +57,6 @@ typedef struct {
 #define NM_IP4_CONFIG_SEARCHES "searches"
 #define NM_IP4_CONFIG_DNS_OPTIONS "dns-options"
 #define NM_IP4_CONFIG_WINS_SERVERS "wins-servers"
-#define NM_IP4_CONFIG_PVD_ID "provisioning-domain-id"
 
 /* deprecated */
 #define NM_IP4_CONFIG_ADDRESSES "addresses"
@@ -167,15 +166,6 @@ NMIPConfigSource nm_ip4_config_get_mtu_source (const NMIP4Config *config);
 /* Metered */
 void nm_ip4_config_set_metered (NMIP4Config *config, gboolean metered);
 gboolean nm_ip4_config_get_metered (const NMIP4Config *config);
-
-/* PVDID */
-void nm_ip4_config_set_pvdid (NMIP4Config *config, char *pvdid);
-char *nm_ip4_config_get_pvdid (const NMIP4Config *config);
-
-/* PvD functions */
-void nm_ip4_config_calc_pvdid (NMIP4Config *config);
-guint nm_ip4_config_pvd_hash (gconstpointer key);
-gboolean nm_ip4_config_pvd_cmp(gconstpointer a, gconstpointer b);
 
 void nm_ip4_config_hash (const NMIP4Config *config, GChecksum *sum, gboolean dns_only);
 gboolean nm_ip4_config_equal (const NMIP4Config *a, const NMIP4Config *b);

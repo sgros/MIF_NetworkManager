@@ -52,12 +52,6 @@ typedef struct _NMIP6ConfigPrivate {
 	guint32 mss;
 	int ifindex;
 	gint64 route_metric;
-
-	/*
-	 * For PVD ID we use only ASCII coded UUID which is 36
-	 * characters long and we also take NULL (for precaution).
-	 */
-	char pvdid[37];
 } NMIP6ConfigPrivate;
 
 
@@ -72,7 +66,6 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMIP6Config,
 	PROP_DOMAINS,
 	PROP_SEARCHES,
 	PROP_DNS_OPTIONS,
-	PROP_PVD_ID,
 );
 
 NMIP6Config *
@@ -1801,36 +1794,6 @@ nm_ip6_config_get_mss (const NMIP6Config *config)
 
 /******************************************************************/
 
-void
-nm_ip6_config_set_pvdid (NMIP6Config *config, char *pvdid)
-{
-	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
-
-	strncpy(priv->pvdid, pvdid, 36);
-}
-
-char *
-nm_ip6_config_get_pvdid (const NMIP6Config *config)
-{
-	NMIP6ConfigPrivate *priv = NM_IP6_CONFIG_GET_PRIVATE (config);
-
-	return priv->pvdid;
-}
-
-guint
-nm_ip6_config_pvd_hash (gconstpointer key)
-{
-	return g_str_hash(key);
-}
-
-gboolean
-nm_ip6_config_pvd_cmp(gconstpointer a, gconstpointer b)
-{
-	return g_str_equal(a, b);
-}
-
-/******************************************************************/
-
 static inline void
 hash_u32 (GChecksum *sum, guint32 n)
 {
@@ -2132,9 +2095,6 @@ get_property (GObject *object, guint prop_id,
 	case PROP_DNS_OPTIONS:
 		nm_utils_g_value_set_strv (value, priv->dns_options);
 		break;
-	case PROP_PVD_ID:
-		g_value_set_string (value, priv->pvdid);
-		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -2232,12 +2192,6 @@ nm_ip6_config_class_init (NMIP6ConfigClass *config_class)
 		                    G_TYPE_STRV,
 		                    G_PARAM_READABLE |
 		                    G_PARAM_STATIC_STRINGS);
-
-	obj_properties[PROP_PVD_ID] =
-		g_param_spec_string (NM_IP6_CONFIG_PVD_ID, "", "",
-		                     NULL,
-		                     G_PARAM_READABLE |
-		                     G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 

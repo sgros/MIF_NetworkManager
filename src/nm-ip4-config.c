@@ -60,12 +60,6 @@ typedef struct _NMIP4ConfigPrivate {
 	int ifindex;
 	gint64 route_metric;
 	gboolean metered;
-
-	/*
-	 * For PVD ID we use only ASCII coded UUID which is 36
-	 * characters long and we also take NULL (for precaution).
-	 */
-	char pvdid[37];
 } NMIP4ConfigPrivate;
 
 /* internal guint32 are assigned to gobject properties of type uint. Ensure, that uint is large enough */
@@ -84,11 +78,7 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMIP4Config,
 	PROP_SEARCHES,
 	PROP_DNS_OPTIONS,
 	PROP_WINS_SERVERS,
-	PROP_PVD_ID,
 );
-
-static void
-_ip4_config_calc_pvdid (NMIP4Config *config);
 
 NMIP4Config *
 nm_ip4_config_new (int ifindex)
@@ -340,8 +330,6 @@ nm_ip4_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf
 	if (   priv->gateway != old_gateway
 	    || priv->has_gateway != old_has_gateway)
 		_notify (config, PROP_GATEWAY);
-
-	_ip4_config_calc_pvdid (config);
 
 	return config;
 }
@@ -1394,8 +1382,6 @@ nm_ip4_config_set_gateway (NMIP4Config *config, guint32 gateway)
 		priv->gateway = gateway;
 		priv->has_gateway = TRUE;
 		_notify (config, PROP_GATEWAY);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1408,8 +1394,6 @@ nm_ip4_config_unset_gateway (NMIP4Config *config)
 		priv->gateway = 0;
 		priv->has_gateway = FALSE;
 		_notify (config, PROP_GATEWAY);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1458,8 +1442,6 @@ nm_ip4_config_reset_addresses (NMIP4Config *config)
 		g_array_set_size (priv->addresses, 0);
 		_notify (config, PROP_ADDRESS_DATA);
 		_notify (config, PROP_ADDRESSES);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1518,8 +1500,6 @@ nm_ip4_config_add_address (NMIP4Config *config, const NMPlatformIP4Address *new)
 NOTIFY:
 	_notify (config, PROP_ADDRESS_DATA);
 	_notify (config, PROP_ADDRESSES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1532,8 +1512,6 @@ nm_ip4_config_del_address (NMIP4Config *config, guint i)
 	g_array_remove_index (priv->addresses, i);
 	_notify (config, PROP_ADDRESS_DATA);
 	_notify (config, PROP_ADDRESSES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint
@@ -1570,8 +1548,6 @@ nm_ip4_config_reset_routes (NMIP4Config *config)
 		g_array_set_size (priv->routes, 0);
 		_notify (config, PROP_ROUTE_DATA);
 		_notify (config, PROP_ROUTES);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1616,8 +1592,6 @@ nm_ip4_config_add_route (NMIP4Config *config, const NMPlatformIP4Route *new)
 NOTIFY:
 	_notify (config, PROP_ROUTE_DATA);
 	_notify (config, PROP_ROUTES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1630,8 +1604,6 @@ nm_ip4_config_del_route (NMIP4Config *config, guint i)
 	g_array_remove_index (priv->routes, i);
 	_notify (config, PROP_ROUTE_DATA);
 	_notify (config, PROP_ROUTES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint
@@ -1690,8 +1662,6 @@ nm_ip4_config_reset_nameservers (NMIP4Config *config)
 	if (priv->nameservers->len != 0) {
 		g_array_set_size (priv->nameservers, 0);
 		_notify (config, PROP_NAMESERVERS);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1709,8 +1679,6 @@ nm_ip4_config_add_nameserver (NMIP4Config *config, guint32 new)
 
 	g_array_append_val (priv->nameservers, new);
 	_notify (config, PROP_NAMESERVERS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1722,8 +1690,6 @@ nm_ip4_config_del_nameserver (NMIP4Config *config, guint i)
 
 	g_array_remove_index (priv->nameservers, i);
 	_notify (config, PROP_NAMESERVERS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint32
@@ -1752,8 +1718,6 @@ nm_ip4_config_reset_domains (NMIP4Config *config)
 	if (priv->domains->len != 0) {
 		g_ptr_array_set_size (priv->domains, 0);
 		_notify (config, PROP_DOMAINS);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1772,8 +1736,6 @@ nm_ip4_config_add_domain (NMIP4Config *config, const char *domain)
 
 	g_ptr_array_add (priv->domains, g_strdup (domain));
 	_notify (config, PROP_DOMAINS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1785,8 +1747,6 @@ nm_ip4_config_del_domain (NMIP4Config *config, guint i)
 
 	g_ptr_array_remove_index (priv->domains, i);
 	_notify (config, PROP_DOMAINS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint32
@@ -1815,8 +1775,6 @@ nm_ip4_config_reset_searches (NMIP4Config *config)
 	if (priv->searches->len != 0) {
 		g_ptr_array_set_size (priv->searches, 0);
 		_notify (config, PROP_SEARCHES);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1850,8 +1808,6 @@ nm_ip4_config_add_search (NMIP4Config *config, const char *new)
 
 	g_ptr_array_add (priv->searches, search);
 	_notify (config, PROP_SEARCHES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1863,8 +1819,6 @@ nm_ip4_config_del_search (NMIP4Config *config, guint i)
 
 	g_ptr_array_remove_index (priv->searches, i);
 	_notify (config, PROP_SEARCHES);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint32
@@ -1893,8 +1847,6 @@ nm_ip4_config_reset_dns_options (NMIP4Config *config)
 	if (priv->dns_options->len != 0) {
 		g_ptr_array_set_size (priv->dns_options, 0);
 		_notify (config, PROP_DNS_OPTIONS);
-
-		_ip4_config_calc_pvdid (config);
 	}
 }
 
@@ -1913,8 +1865,6 @@ nm_ip4_config_add_dns_option (NMIP4Config *config, const char *new)
 
 	g_ptr_array_add (priv->dns_options, g_strdup (new));
 	_notify (config, PROP_DNS_OPTIONS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 void
@@ -1926,8 +1876,6 @@ nm_ip4_config_del_dns_option(NMIP4Config *config, guint i)
 
 	g_ptr_array_remove_index (priv->dns_options, i);
 	_notify (config, PROP_DNS_OPTIONS);
-
-	_ip4_config_calc_pvdid (config);
 }
 
 guint32
@@ -2132,103 +2080,6 @@ nm_ip4_config_get_metered (const NMIP4Config *config)
 	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
 
 	return priv->metered;
-}
-
-/******************************************************************/
-
-void
-nm_ip4_config_set_pvdid (NMIP4Config *config, char *pvdid)
-{
-	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
-
-	strncpy(priv->pvdid, pvdid, 36);
-}
-
-char *
-nm_ip4_config_get_pvdid (const NMIP4Config *config)
-{
-	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
-
-	return priv->pvdid;
-}
-
-static void
-_ip4_config_calc_pvdid (NMIP4Config *config)
-{
-	NMIP4ConfigPrivate *priv = NM_IP4_CONFIG_GET_PRIVATE (config);
-	char buffer[2048];
-	char *uuid;
-	gssize buf_len = 0;
-	int i;
-
-	memset (buffer, 0, sizeof (buffer));
-
-	if (priv->has_gateway)
-		memcpy (buffer, &priv->gateway, sizeof (priv->gateway));
-
-	buf_len += sizeof (priv->gateway);
-
-	for (i = 0; i < priv->routes->len; i++) {
-		const NMPlatformIP4Route *route = &g_array_index (priv->routes, NMPlatformIP4Route, i);
-
-		memcpy (buffer + buf_len, &route->network, sizeof (route->network));
-		buf_len += sizeof (route->network);
-
-		memcpy (buffer + buf_len, &route->gateway, sizeof (route->gateway));
-		buf_len += sizeof (route->gateway);
-
-		buffer[buf_len] = route->plen;
-		buf_len++;
-
-		/* TODO: Should we use metric/mss too? */
-	}
-
-	for (i = 0; i < priv->nameservers->len; i++) {
-		guint32 n = g_array_index (priv->nameservers, guint32, i);
-
-		memcpy (buffer + buf_len, &n, sizeof (n));
-		buf_len += sizeof (n);
-	}
-
-	for (i = 0; i < priv->domains->len; i++) {
-		const char *d = g_ptr_array_index (priv->domains, i);
-
-		memcpy (buffer + buf_len, d, strlen (d));
-		buf_len += strlen (d);
-	}
-
-	for (i = 0; i < priv->searches->len; i++) {
-		const char *d = g_ptr_array_index (priv->searches, i);
-
-		memcpy (buffer + buf_len, d, strlen (d));
-		buf_len += strlen (d);
-	}
-
-	for (i = 0; i < priv->dns_options->len; i++) {
-		const char *d = g_ptr_array_index (priv->dns_options, i);
-
-		memcpy (buffer + buf_len, d, strlen (d));
-		buf_len += strlen (d);
-	}
-
-	uuid = nm_utils_uuid_generate_from_string (buffer, buf_len, NM_UTILS_UUID_TYPE_VARIANT3, NULL);
-	memcpy (priv->pvdid, uuid, 36);
-	priv->pvdid[36] = 0;
-	g_free (uuid);
-
-	_notify (config, PROP_PVD_ID);
-}
-
-guint
-nm_ip4_config_pvd_hash (gconstpointer key)
-{
-	return g_str_hash(key);
-}
-
-gboolean
-nm_ip4_config_pvd_cmp(gconstpointer a, gconstpointer b)
-{
-	return g_str_equal(a, b);
 }
 
 /******************************************************************/
@@ -2538,9 +2389,6 @@ get_property (GObject *object, guint prop_id,
 		                                                 priv->wins->len,
 		                                                 sizeof (guint32)));
 		break;
-	case PROP_PVD_ID:
-		g_value_set_string (value, priv->pvdid);
-		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -2643,12 +2491,6 @@ nm_ip4_config_class_init (NMIP4ConfigClass *config_class)
 		                      NULL,
 		                      G_PARAM_READABLE |
 		                      G_PARAM_STATIC_STRINGS);
-
-	obj_properties[PROP_PVD_ID] =
-		g_param_spec_string (NM_IP4_CONFIG_PVD_ID, "", "",
-		                     NULL,
-		                     G_PARAM_READABLE |
-		                     G_PARAM_STATIC_STRINGS);
 
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 
