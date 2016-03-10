@@ -529,7 +529,9 @@ if WITH_LIBSOUP
 libNetworkManager_la_LIBADD += $(LIBSOUP_LIBS)
 endif
 
-NetworkManager_LDFLAGS = -rdynamic
+NetworkManager_LDFLAGS = \
+	-rdynamic \
+	-Wl,--version-script="$(srcdir)/NetworkManager.ver"
 
 ######################
 
@@ -637,7 +639,8 @@ dbusservice_DATA = org.freedesktop.NetworkManager.conf
 
 EXTRA_DIST = \
 	$(dbusservice_DATA) \
-	$(NetworkManager_DATA)
+	$(NetworkManager_DATA) \
+	NetworkManager.ver
 
 rundir=$(runstatedir)/NetworkManager
 statedir=$(localstatedir)/lib/NetworkManager

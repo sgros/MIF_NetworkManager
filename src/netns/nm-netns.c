@@ -2110,7 +2110,7 @@ _internal_activate_device (NMNetns *self, NMActiveConnection *active, GError **e
 		_LOGD (LOGD_CORE, "Activation of '%s' depends on active connection %p %s",
 		       nm_settings_connection_get_id (connection),
 		       master_ac,
-		       str_if_set (nm_exported_object_get_path (NM_EXPORTED_OBJECT  (master_ac)), ""));
+		       nm_exported_object_get_path (NM_EXPORTED_OBJECT  (master_ac)) ?: "");
 	}
 
 	/* Check slaves for master connection and possibly activate them */
@@ -3017,8 +3017,17 @@ retry_connections_for_parent_device (NMNetns *self, NMDevice *device)
 		NMDevice *parent;
 
 		parent = find_parent_device_for_connection (self, candidate);
-		if (parent == device)
-			connection_changed (nm_settings_get(), candidate, self);
+                if (parent == device) {
+			char *ifname;
+			GError *error;
+
+                        /* Only try to activate devices that don't already exist */
+                        ifname = nm_netns_get_connection_iface (self, candidate, &parent, &error);
+                        if (ifname) {
+                                if (!nm_platform_link_get_by_ifname (NM_PLATFORM_GET, ifname))
+                                        connection_changed (nm_settings_get (), candidate, self);
+                        }
+                }
 	}
 
 	g_slist_free (connections);

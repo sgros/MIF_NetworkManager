@@ -1146,11 +1146,19 @@ retry_connections_for_parent_device (NMManager *self, NMDevice *device)
 	connections = nm_settings_get_connections (nm_settings_get());
 	for (iter = connections; iter; iter = g_slist_next (iter)) {
 		NMConnection *candidate = iter->data;
+		gs_free_error GError *error = NULL;
+		gs_free char *ifname = NULL;
 		NMDevice *parent;
 
 		parent = find_parent_device_for_connection (self, candidate, NULL);
-		if (parent == device)
-			connection_changed (nm_settings_get(), candidate, self);
+		if (parent == device) {
+			/* Only try to activate devices that don't already exist */
+			ifname = nm_manager_get_connection_iface (self, candidate, &parent, &error);
+			if (ifname) {
+				if (!nm_platform_link_get_by_ifname (NM_PLATFORM_GET, ifname))
+					connection_changed (nm_settings_get (), candidate, self);
+			}
+		}
 	}
 
 	g_slist_free (connections);
@@ -2843,7 +2851,7 @@ _internal_activate_device (NMManager *self, NMActiveConnection *active, GError *
 		_LOGD (LOGD_CORE, "Activation of '%s' depends on active connection %p %s",
 		       nm_settings_connection_get_id (connection),
 		       master_ac,
-		       str_if_set (nm_exported_object_get_path (NM_EXPORTED_OBJECT  (master_ac)), ""));
+		       nm_exported_object_get_path (NM_EXPORTED_OBJECT  (master_ac)) ?: "");
 	}
 
 	/* Check slaves for master connection and possibly activate them */

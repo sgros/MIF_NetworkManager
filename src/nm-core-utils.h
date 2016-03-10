@@ -145,22 +145,6 @@ int nm_spawn_process (const char *args, GError **error);
 
 int nm_utils_modprobe (GError **error, gboolean suppress_error_loggin, const char *arg1, ...) G_GNUC_NULL_TERMINATED;
 
-/**
- * str_if_set:
- * @str: input string that will be returned if @str is not %NULL
- * @fallback: if @str is %NULL, return @fallback instead
- *
- * This utility function is useful when printing a string to avoid passing
- * %NULL. E.g. printf ("%s", str_if_set (get_string(), "(none)"));
- *
- * Returns: either @str or @fallback, depending on whether @str is %NULL.
- */
-static inline const char *
-str_if_set (const char *str, const char *fallback)
-{
-	return str ? str : fallback;
-}
-
 guint64 nm_utils_get_start_time_for_pid (pid_t pid, char *out_state, pid_t *out_ppid);
 
 void nm_utils_kill_process_sync (pid_t pid, guint64 start_time, int sig, guint64 log_domain,
@@ -340,7 +324,7 @@ gint32 nm_utils_get_monotonic_timestamp_s (void);
 gint64 nm_utils_monotonic_timestamp_as_boottime (gint64 timestamp, gint64 timestamp_ticks_per_ns);
 
 gboolean    nm_utils_is_valid_path_component (const char *name);
-const char *ASSERT_VALID_PATH_COMPONENT (const char *name);
+const char *NM_ASSERT_VALID_PATH_COMPONENT (const char *name);
 const char *nm_utils_ip6_property_path (const char *ifname, const char *property);
 const char *nm_utils_ip4_property_path (const char *ifname, const char *property);
 
