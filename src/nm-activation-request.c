@@ -57,7 +57,6 @@ enum {
 	PROP_DHCP4_CONFIG,
 	PROP_IP6_CONFIG,
 	PROP_DHCP6_CONFIG,
-	PROP_PVDS,
 
 	LAST_PROP
 };
@@ -539,9 +538,6 @@ get_property (GObject *object, guint prop_id,
 	case PROP_DHCP6_CONFIG:
 		g_object_get_property (G_OBJECT (device), NM_DEVICE_DHCP6_CONFIG, value);
 		break;
-	case PROP_PVDS:
-		g_object_get_property (G_OBJECT (device), NM_DEVICE_PVDS, value);
-		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -571,7 +567,5 @@ nm_act_request_class_init (NMActRequestClass *req_class)
 	                                  NM_ACTIVE_CONNECTION_IP6_CONFIG);
 	g_object_class_override_property (object_class, PROP_DHCP6_CONFIG,
 	                                  NM_ACTIVE_CONNECTION_DHCP6_CONFIG);
-	g_object_class_override_property (object_class, PROP_PVDS,
-	                                  NM_ACTIVE_CONNECTION_PVDS);
 }
 

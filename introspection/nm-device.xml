@@ -168,11 +168,6 @@
         if one of their AvailableConnections was activated.
       </tp:docstring>
     </property>
-    <property name="ProvisioningDomains" type="ao" access="read">
-      <tp:docstring>
-        List of provisioning domains received through the interface.
-      </tp:docstring>
-    </property>
     <property name="NetworkNamespace" type="s" access="read">
       <tp:docstring>
         Network namespace in which device lives.
@@ -265,17 +260,6 @@
         Deletes a software device from NetworkManager and removes the interface from the system.
         The method returns an error when called for a hardware device.
       </tp:docstring>
-    </method>
-
-    <method name="GetProvisioningDomains">
-      <tp:docstring>
-        Get the list of provisioning domains obtained through the device.
-      </tp:docstring>
-      <arg name="pvds" type="ao" direction="out">
-        <tp:docstring>
-          List of object paths of provisioning domains known to the device.
-        </tp:docstring>
-      </arg>
     </method>
 
     <signal name="StateChanged">

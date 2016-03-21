@@ -13,11 +13,9 @@ noinst_PROGRAMS = \
 	add-connection-libnm \
 	get-active-connections-gdbus \
 	get-ap-info-libnm \
-	list-pvds-libnm \
 	list-active-connections-libnm \
 	list-connections-gdbus \
 	list-connections-libnm \
-	list-devices-libnm \
 	monitor-nm-running-gdbus \
 	monitor-nm-state-gdbus
 
@@ -40,11 +38,6 @@ get_ap_info_libnm_LDADD = \
 	$(top_builddir)/libnm/libnm.la \
 	$(GLIB_LIBS)
 
-list_pvds_libnm_SOURCES = list-pvds-libnm.c
-list_pvds_libnm_LDADD = \
-	$(top_builddir)/libnm/libnm.la \
-	$(GLIB_LIBS)
-
 list_active_connections_libnm_SOURCES = list-active-connections-libnm.c
 list_active_connections_libnm_LDADD = \
 	$(top_builddir)/libnm/libnm.la \
@@ -56,11 +49,6 @@ list_connections_gdbus_LDADD = \
 
 list_connections_libnm_SOURCES = list-connections-libnm.c
 list_connections_libnm_LDADD = \
-	$(top_builddir)/libnm/libnm.la \
-	$(GLIB_LIBS)
-
-list_devices_libnm_SOURCES = list-devices-libnm.c
-list_devices_libnm_LDADD = \
 	$(top_builddir)/libnm/libnm.la \
 	$(GLIB_LIBS)
 

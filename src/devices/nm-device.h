@@ -69,8 +69,6 @@
  * It is thus important that the property name matches. */
 #define NM_DEVICE_SLAVES           "slaves"         /* partially internal */
 
-#define NM_DEVICE_PVDS             "provisioning-domains"
-
 #define NM_DEVICE_NETNS            "network-namespace"
 
 #define NM_DEVICE_TYPE_DESC        "type-desc"      /* Internal only */

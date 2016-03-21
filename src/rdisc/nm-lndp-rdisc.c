@@ -101,93 +101,7 @@ translate_preference (enum ndp_route_preference preference)
 	}
 }
 
-static void
-pvd_dns_domain_free (gpointer data)
-{
-	g_free (((NMRDiscDNSDomain *)(data))->domain);
-}
-
 #define expiry(item) (item->timestamp + item->lifetime)
-
-static void
-pvd_dump (NMRDisc *rdisc, NMRDiscPVD *pvd)
-{
-	int i;
-	char addrstr[INET6_ADDRSTRLEN];
-
-	_LOGD ("PvD_ID %s", pvd->pvdid);
-
-	for (i = 0; i < pvd->gateways->len; i++) {
-		NMRDiscGateway *gateway = &g_array_index (pvd->gateways, NMRDiscGateway, i);
-
-		inet_ntop (AF_INET6, &gateway->address, addrstr, sizeof (addrstr));
-		_LOGD ("  gateway %s pref %d exp %u", addrstr, gateway->preference, expiry (gateway));
-	}
-	for (i = 0; i < pvd->addresses->len; i++) {
-		NMRDiscAddress *address = &g_array_index (pvd->addresses, NMRDiscAddress, i);
-
-		inet_ntop (AF_INET6, &address->address, addrstr, sizeof (addrstr));
-		_LOGD ("  address %s exp %u", addrstr, expiry (address));
-	}
-	for (i = 0; i < pvd->routes->len; i++) {
-		NMRDiscRoute *route = &g_array_index (pvd->routes, NMRDiscRoute, i);
-
-		inet_ntop (AF_INET6, &route->network, addrstr, sizeof (addrstr));
-		_LOGD ("  route %s/%d via %s pref %d exp %u", addrstr, route->plen,
-			nm_utils_inet6_ntop (&route->gateway, NULL), route->preference,
-			expiry (route));
-	}
-	for (i = 0; i < pvd->dns_servers->len; i++) {
-		NMRDiscDNSServer *dns_server = &g_array_index (pvd->dns_servers, NMRDiscDNSServer, i);
-
-		inet_ntop (AF_INET6, &dns_server->address, addrstr, sizeof (addrstr));
-		_LOGD ("  dns_server %s exp %u", addrstr, expiry (dns_server));
-	}
-	for (i = 0; i < pvd->dns_domains->len; i++) {
-		NMRDiscDNSDomain *dns_domain = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain, i);
-
-		_LOGD ("  dns_domain %s exp %u", dns_domain->domain, expiry (dns_domain));
-	}
-}
-
-/*
- * TODO: There is a function nm_ip6_config_hash() that might be used
- * instead of this one.
- */
-static char *
-pvd_generate_uuid (NMRDisc *rdisc, NMRDiscPVD *pvd)
-{
-	char buf[2048], *uuid;
-	gssize buf_len = 0;
-	int i;
-
-	for (i = 0; i < pvd->routes->len; i++) {
-		NMRDiscRoute *route = &g_array_index (pvd->routes, NMRDiscRoute, i);
-
-		memcpy(buf + buf_len, &route->network, sizeof(route->network));
-		buf_len += sizeof(route->network);
-	}
-	for (i = 0; i < pvd->dns_servers->len; i++) {
-		NMRDiscDNSServer *dns_server = &g_array_index (pvd->dns_servers, NMRDiscDNSServer, i);
-
-		memcpy(buf + buf_len, &dns_server->address, sizeof(dns_server->address));
-		buf_len += sizeof(dns_server->address);
-	}
-	for (i = 0; i < pvd->dns_domains->len; i++) {
-		NMRDiscDNSDomain *dns_domain = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain, i);
-
-		memcpy(buf + buf_len, &dns_domain->domain, strlen(dns_domain->domain));
-		buf_len += sizeof(dns_domain->domain);
-	}
-
-	_LOGD("Data length in buffer to create UUID is %lu", buf_len);
-
-	uuid = nm_utils_uuid_generate_from_string (buf, buf_len, NM_UTILS_UUID_TYPE_VARIANT3, NULL);
-
-	_LOGD("Implicit PvD ID is %s", uuid);
-
-	return uuid;
-}
 
 static int
 receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
@@ -197,22 +111,8 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	struct ndp_msgra *msgra = ndp_msgra (msg);
 	NMRDiscGateway gateway;
 	guint32 now = nm_utils_get_monotonic_timestamp_s ();
-	int offset, suboffset;
+	int offset;
 	int hop_limit;
-	gboolean err;
-
-	NMRDiscPVD *pvd;
-	char *pvd_uuid;
-
-	// Initialize PvD structure
-	pvd = (NMRDiscPVD *)g_malloc0(sizeof(*pvd));
-
-	pvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
-	pvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
-	pvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
-	pvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
-	pvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
-	g_array_set_clear_func (pvd->dns_domains, pvd_dns_domain_free);
 
 	/* Router discovery is subject to the following RFC documents:
 	 *
@@ -266,8 +166,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 	// TODO: If gateway.lifetime is 0 then the router is stopping and all the
 	// configuration data sent by this router has to be removed!
 
-	g_array_append_val(pvd->gateways, gateway);
-
 	/* Addresses & Routes */
 	ndp_msg_opt_for_each_offset (offset, msg, NDP_MSG_OPT_PREFIX) {
 		NMRDiscRoute route;
@@ -282,7 +180,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			route.lifetime = ndp_msg_opt_prefix_valid_time (msg, offset);
 			if (nm_rdisc_add_route (rdisc, &route))
 				changed |= NM_RDISC_CONFIG_ROUTES;
-			g_array_append_val(pvd->routes, route);
 		}
 
 		/* Address */
@@ -298,8 +195,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 
 				if (nm_rdisc_complete_and_add_address (rdisc, &address))
 					changed |= NM_RDISC_CONFIG_ADDRESSES;
-
-				g_array_append_val(pvd->addresses, address);
 			}
 		}
 	}
@@ -316,7 +211,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		route.preference = translate_preference (ndp_msg_opt_route_preference (msg, offset));
 		if (nm_rdisc_add_route (rdisc, &route))
 			changed |= NM_RDISC_CONFIG_ROUTES;
-		g_array_append_val(pvd->routes, route);
 	}
 
 	/* DNS information */
@@ -340,8 +234,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 				dns_server.lifetime = 7200;
 			if (nm_rdisc_add_dns_server (rdisc, &dns_server))
 				changed |= NM_RDISC_CONFIG_DNS_SERVERS;
-
-			g_array_append_val(pvd->dns_servers, dns_server);
 		}
 	}
 	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_DNSSL) {
@@ -349,7 +241,7 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		int domain_index;
 
 		ndp_msg_opt_dnssl_for_each_domain (domain, domain_index, msg, offset) {
-			NMRDiscDNSDomain dns_domain, *item;
+			NMRDiscDNSDomain dns_domain;
 
 			memset (&dns_domain, 0, sizeof (dns_domain));
 			dns_domain.domain = domain;
@@ -364,11 +256,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 				dns_domain.lifetime = 7200;
 			if (nm_rdisc_add_dns_domain (rdisc, &dns_domain))
 				changed |= NM_RDISC_CONFIG_DNS_DOMAINS;
-
-			g_array_append_val (pvd->dns_domains, dns_domain);
-			item = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain,
-					pvd->dns_domains->len - 1);
-			item->domain = g_strdup (domain);
 		}
 	}
 
@@ -384,7 +271,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 		if (mtu >= 1280) {
 			rdisc->mtu = mtu;
 			changed |= NM_RDISC_CONFIG_MTU;
-			pvd->mtu = mtu;
 		} else {
 			/* All sorts of bad things would happen if we accepted this.
 			 * Kernel would set it, but would flush out all IPv6 addresses away
@@ -392,226 +278,6 @@ receive_ra (struct ndp *ndp, struct ndp_msg *msg, gpointer user_data)
 			 * listen for further RAs that could fix the MTU. */
 			_LOGW ("MTU too small for IPv6 ignored: %d", mtu);
 		}
-	}
-
-	pvd_uuid = pvd_generate_uuid(rdisc, pvd);
-	strncpy(pvd->pvdid, pvd_uuid, 36);
-	g_free(pvd_uuid);
-
-	_LOGD("Received implicit PvD");
-	pvd_dump(rdisc, pvd);
-
-	if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
-		_LOGD("Received new implicit PvD");
-	else
-		_LOGD("Received existing implicit PvD");
-
-	/*
-	 * If something changed in RA then it certainly changed something
-	 * in PvD, too.
-	 */
-	if (changed)
-		changed |= NM_RDISC_CONFIG_PVD;
-
-	/* PvD Container option */
-	err = FALSE;
-	ndp_msg_opt_for_each_offset(offset, msg, NDP_MSG_OPT_PVDCO) {
-
-		/*
-		 * TODO: It would be better to find PvD and then remove elements
-		 * from it than to create a completely new structure and replace
-		 * the old one. Replacing the old one we don't know what exactly
-		 * changed and we are thus more inefficient.
-		 */
-
-		/*
-		 * TODO: Gateway lifetime found in RA has to be takein into account
-		 * also for PvDs received from the given gateway! This can be done
-		 * in two ways: implicitly, when some router is removed, evertying
-		 * that has the given gateway is removed; explicitly, every PvD has
-		 * its own copy of router lifetime.
-		 */
-
-		_LOGD ("received PvD CO option");
-
-		pvd = (NMRDiscPVD *)g_malloc0(sizeof(*pvd));
-
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_PVDID, offset, NDP_MSG_OPT_PVDCO) {
-			enum ndp_pvdid_type pvdid_type;
-			size_t pvdid_len;
-
-			pvdid_type = ndp_msg_opt_pvdid_type(msg, suboffset);
-			pvdid_len = ndp_msg_opt_pvdid_len(msg, suboffset);
-
-			if (pvdid_type != NDP_PVDID_TYPE_UUID || pvdid_len != 36) {
-				_LOGW ("received unrecognized PvD ID type %u (len=%lu), skipping PvD CO", pvdid_type, pvdid_len);
-				err = true;
-				break;
-			}
-
-			memcpy (pvd->pvdid, ndp_msg_opt_pvdid (msg, suboffset), pvdid_len);
-			pvd->pvdid[36] = 0;
-
-			if (err)
-				break;
-		}
-
-		if (err) {
-			g_free(pvd);
-			continue;
-		}
-
-		pvd->gateways = g_array_new (FALSE, FALSE, sizeof (NMRDiscGateway));
-		pvd->addresses = g_array_new (FALSE, FALSE, sizeof (NMRDiscAddress));
-		pvd->routes = g_array_new (FALSE, FALSE, sizeof (NMRDiscRoute));
-		pvd->dns_servers = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSServer));
-		pvd->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
-		g_array_set_clear_func (pvd->dns_domains, pvd_dns_domain_free);
-
-		/*
-		 * Add current gateway
-		 *
-		 * TODO: Note that we do not currently support the case in which there are
-		 * two or more routers on the network announcing the same prefixes and
-		 * routes. This was the "problem" even before the introduction of PvDs.
-		 * Namely, each address created and added to a list of addresses has also
-		 * a gateway information, so it's not possible to have two gateways for a
-		 * single route.
-		 */
-		g_array_append_val(pvd->gateways, gateway);
-
-		/* MTU */
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_MTU, offset, NDP_MSG_OPT_PVDCO) {
-
-			guint32 mtu = ndp_msg_opt_mtu(msg, suboffset);
-			if (mtu >= 1280) {
-				pvd->mtu = mtu;
-			} else {
-				/* All sorts of bad things would happen if we accepted this.
-				 * Kernel would set it, but would flush out all IPv6 addresses away
-				 * from the link, even the link-local, and we wouldn't be able to
-				 * listen for further RAs that could fix the MTU. */
-				_LOGW ("MTU too small for IPv6 ignored: %d", mtu);
-			}
-		}
-
-		/* Addresses & Routes */
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_PREFIX, offset, NDP_MSG_OPT_PVDCO) {
-			NMRDiscRoute route;
-			NMRDiscAddress address;
-
-			memset (&route, 0, sizeof (route));
-			memset (&address, 0, sizeof (address));
-
-			/* Device route */
-			memset (&route, 0, sizeof (route));
-			route.plen = ndp_msg_opt_prefix_len (msg, suboffset);
-			nm_utils_ip6_address_clear_host_address (&route.network, ndp_msg_opt_prefix (msg, suboffset), route.plen);
-			route.timestamp = now;
-			if (ndp_msg_opt_prefix_flag_on_link (msg, suboffset)) {
-				route.lifetime = ndp_msg_opt_prefix_valid_time (msg, suboffset);
-				g_array_append_val (pvd->routes, route);
-			}
-
-			/* Address */
-			if (ndp_msg_opt_prefix_flag_auto_addr_conf (msg, suboffset)) {
-				if (route.plen == 64) {
-					memset (&address, 0, sizeof (address));
-					address.address = route.network;
-					address.timestamp = now;
-					address.lifetime = ndp_msg_opt_prefix_valid_time (msg, suboffset);
-					address.preferred = ndp_msg_opt_prefix_preferred_time (msg, suboffset);
-					if (address.preferred > address.lifetime)
-						address.preferred = address.lifetime;
-
-					g_array_append_val (pvd->addresses, address);
-				}
-			}
-		}
-
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_ROUTE, offset, NDP_MSG_OPT_PVDCO) {
-			NMRDiscRoute route;
-
-			/* Routers through this particular gateway */
-			memset (&route, 0, sizeof (route));
-			route.gateway = gateway.address;
-			route.plen = ndp_msg_opt_route_prefix_len (msg, suboffset);
-			nm_utils_ip6_address_clear_host_address (&route.network, ndp_msg_opt_route_prefix (msg, suboffset), route.plen);
-			route.timestamp = now;
-			route.lifetime = ndp_msg_opt_route_lifetime (msg, suboffset);
-			route.preference = translate_preference (ndp_msg_opt_route_preference (msg, suboffset));
-			g_array_append_val (pvd->routes, route);
-		}
-
-		/* DNS information */
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_RDNSS, offset, NDP_MSG_OPT_PVDCO) {
-			static struct in6_addr *addr;
-			int addr_index;
-
-			ndp_msg_opt_rdnss_for_each_addr (addr, addr_index, msg, suboffset) {
-				NMRDiscDNSServer dns_server;
-
-				memset (&dns_server, 0, sizeof (dns_server));
-				dns_server.address = *addr;
-				dns_server.timestamp = now;
-				dns_server.lifetime = ndp_msg_opt_rdnss_lifetime (msg, suboffset);
-				/* Pad the lifetime somewhat to give a bit of slack in cases
-				 * where one RA gets lost or something (which can happen on unreliable
-				 * links like WiFi where certain types of frames are not retransmitted).
-				 * Note that 0 has special meaning and is therefore not adjusted.
-				 */
-				if (dns_server.lifetime && dns_server.lifetime < 7200)
-					dns_server.lifetime = 7200;
-				g_array_append_val (pvd->dns_servers, dns_server);
-			}
-		}
-
-		ndp_msg_subopt_for_each_suboffset(suboffset, msg,
-				NDP_MSG_OPT_DNSSL, offset, NDP_MSG_OPT_PVDCO) {
-			char *domain;
-			int domain_index;
-			NMRDiscDNSDomain *item;
-
-			ndp_msg_opt_dnssl_for_each_domain (domain, domain_index, msg, suboffset) {
-				NMRDiscDNSDomain dns_domain;
-
-				memset (&dns_domain, 0, sizeof (dns_domain));
-				dns_domain.domain = domain;
-				dns_domain.timestamp = now;
-				dns_domain.lifetime = ndp_msg_opt_rdnss_lifetime (msg, suboffset);
-				/* Pad the lifetime somewhat to give a bit of slack in cases
-				 * where one RA gets lost or something (which can happen on unreliable
-				 * links like WiFi where certain types of frames are not retransmitted).
-				 * Note that 0 has special meaning and is therefore not adjusted.
-				 */
-				if (dns_domain.lifetime && dns_domain.lifetime < 7200)
-					dns_domain.lifetime = 7200;
-
-				g_array_append_val (pvd->dns_domains, dns_domain);
-				item = &g_array_index (pvd->dns_domains, NMRDiscDNSDomain,
-						pvd->dns_domains->len - 1);
-				item->domain = g_strdup (domain);
-
-			}
-		}
-
-		pvd_dump(rdisc, pvd);
-
-		if (g_hash_table_replace(rdisc->pvds, pvd, pvd))
-			_LOGD("Received new explicit PvD");
-		else
-			_LOGD("Received existing explicit PvD");
-
-		/*
-		 * Mark that PvD changed (TODO: Maybe it isn't, like it
-		 * might happen in RA!)
-		 */
-		changed |= NM_RDISC_CONFIG_PVD;
 	}
 
 	nm_rdisc_ra_received (rdisc, now, changed);

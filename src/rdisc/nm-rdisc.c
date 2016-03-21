@@ -441,8 +441,6 @@ config_map_to_string (NMRDiscConfigMap map, char *p)
 		*p++ = 'S';
 	if (map & NM_RDISC_CONFIG_DNS_DOMAINS)
 		*p++ = 'D';
-	if (map & NM_RDISC_CONFIG_PVD)
-		*p++ = 'P';
 	*p = '\0';
 }
 
@@ -614,112 +612,6 @@ clean_dns_domains (NMRDisc *rdisc, guint32 now, NMRDiscConfigMap *changed, guint
 	}
 }
 
-static void
-clean_pvd_gateways (GArray *gateways, guint32 now, NMRDiscConfigMap *changed, guint32 *nextevent)
-{
-	int i;
-
-	for (i = 0; i < gateways->len; i++) {
-		NMRDiscGateway *item = &g_array_index (gateways, NMRDiscGateway, i);
-		guint64 expiry = (guint64) item->timestamp + item->lifetime;
-
-		if (item->lifetime == G_MAXUINT32)
-			continue;
-
-		if (now >= expiry) {
-			g_array_remove_index (gateways, i--);
-			*changed |= NM_RDISC_CONFIG_PVD_GATEWAYS;
-		} else if (*nextevent > expiry)
-			*nextevent = expiry;
-	}
-}
-
-static void
-clean_pvd_addresses (GArray *addresses, guint32 now, NMRDiscConfigMap *changed, guint32 *nextevent)
-{
-	int i;
-
-	for (i = 0; i < addresses->len; i++) {
-		NMRDiscAddress *item = &g_array_index (addresses, NMRDiscAddress, i);
-		guint64 expiry = (guint64) item->timestamp + item->lifetime;
-
-		if (item->lifetime == G_MAXUINT32)
-			continue;
-
-		if (now >= expiry) {
-			g_array_remove_index (addresses, i--);
-			*changed |= NM_RDISC_CONFIG_PVD_ADDRESSES;
-		} else if (*nextevent > expiry)
-			*nextevent = expiry;
-	}
-}
-
-static void
-clean_pvd_routes (GArray *routes, guint32 now, NMRDiscConfigMap *changed, guint32 *nextevent)
-{
-	int i;
-
-	for (i = 0; i < routes->len; i++) {
-		NMRDiscRoute *item = &g_array_index (routes, NMRDiscRoute, i);
-		guint64 expiry = (guint64) item->timestamp + item->lifetime;
-
-		if (item->lifetime == G_MAXUINT32)
-			continue;
-
-		if (now >= expiry) {
-			g_array_remove_index (routes, i--);
-			*changed |= NM_RDISC_CONFIG_PVD_ROUTES;
-		} else if (*nextevent > expiry)
-			*nextevent = expiry;
-	}
-}
-
-static void
-clean_pvd_dns_servers (NMRDisc *rdisc, GArray *dns_servers, guint32 now, NMRDiscConfigMap *changed, guint32 *nextevent)
-{
-	int i;
-
-	for (i = 0; i < dns_servers->len; i++) {
-		NMRDiscDNSServer *item = &g_array_index (dns_servers, NMRDiscDNSServer, i);
-		guint64 expiry = (guint64) item->timestamp + item->lifetime;
-		guint64 refresh = (guint64) item->timestamp + item->lifetime / 2;
-
-		if (item->lifetime == G_MAXUINT32)
-			continue;
-
-		if (now >= expiry) {
-			g_array_remove_index (dns_servers, i--);
-			*changed |= NM_RDISC_CONFIG_PVD_DNS_SERVERS;
-		} else if (now >= refresh)
-			solicit (rdisc);
-		else if (*nextevent > refresh)
-			*nextevent = refresh;
-	}
-}
-
-static void
-clean_pvd_dns_domains (NMRDisc *rdisc, GArray *dns_domains, guint32 now, NMRDiscConfigMap *changed, guint32 *nextevent)
-{
-	int i;
-
-	for (i = 0; i < dns_domains->len; i++) {
-		NMRDiscDNSDomain *item = &g_array_index (dns_domains, NMRDiscDNSDomain, i);
-		guint64 expiry = (guint64) item->timestamp + item->lifetime;
-		guint64 refresh = (guint64) item->timestamp + item->lifetime / 2;
-
-		if (item->lifetime == G_MAXUINT32)
-			continue;
-
-		if (now >= expiry) {
-			g_array_remove_index (dns_domains, i--);
-			*changed |= NM_RDISC_CONFIG_PVD_DNS_DOMAINS;
-		} else if (now >= refresh)
-			solicit (rdisc);
-		else if (*nextevent > refresh)
-			*nextevent = refresh;
-	}
-}
-
 static gboolean timeout_cb (gpointer user_data);
 
 static void
@@ -730,46 +622,13 @@ check_timestamps (NMRDisc *rdisc, guint32 now, NMRDiscConfigMap changed)
 	guint32 never = G_MAXINT32;
 	guint32 nextevent = never;
 
-	GHashTableIter iter;
-	char *pvdid;
-	NMRDiscPVD *pvd;
-
 	nm_clear_g_source (&priv->timeout_id);
-
-	/*
-	 * TODO: Those clean_* and clean_pvd_* functions have to be unified.
-	 * Basically, clean_pvd_ functions are more general and should be
-	 * used instead of clean_* function.
-	 *
-	 * I didn't do that in order for my changes to be incremental so that
-	 * there is no merge conflicts, or at least that there is as few
-	 * conflicts as possible.
-	 */
 
 	clean_gateways (rdisc, now, &changed, &nextevent);
 	clean_addresses (rdisc, now, &changed, &nextevent);
 	clean_routes (rdisc, now, &changed, &nextevent);
 	clean_dns_servers (rdisc, now, &changed, &nextevent);
 	clean_dns_domains (rdisc, now, &changed, &nextevent);
-
-	// TODO & BUG
-	//
-	// Clean PvDs! Question is is it possible for particular elements of
-	// PvD to be removed, or PvDs are treated as a single unit and removed
-	// whenever any single component of PvD disappears.
-	//
-	// Also, for implicit PvDs removing certain prefixes effectively creates
-	// a new PvD!
-	//
-	g_hash_table_iter_init (&iter, rdisc->pvds);
-	while (g_hash_table_iter_next (&iter, (gpointer *)&pvdid, (gpointer *)&pvd))
-	{
-		clean_pvd_gateways (pvd->gateways, now, &changed, &nextevent);
-		clean_pvd_addresses (pvd->addresses, now, &changed, &nextevent);
-		clean_pvd_routes (pvd->routes, now, &changed, &nextevent);
-		clean_pvd_dns_servers (rdisc, pvd->dns_servers, now, &changed, &nextevent);
-		clean_pvd_dns_domains (rdisc, pvd->dns_domains, now, &changed, &nextevent);
-	}
 
 	if (changed)
 		g_signal_emit_by_name (rdisc, NM_RDISC_CONFIG_CHANGED, changed);
@@ -809,37 +668,6 @@ dns_domain_free (gpointer data)
 	g_free (((NMRDiscDNSDomain *)(data))->domain);
 }
 
-/*
- * This function accepts pointer to NMRDiscPVD structure and returns
- * a hash that can be used for storing PvD structure into a hash
- * table. The function expects PvD ID to exist and hashes it.
- */
-static guint
-pvd_hash_func(gconstpointer key)
-{
-	return g_str_hash(key);
-}
-
-static gboolean
-pvd_cmp_func(gconstpointer a, gconstpointer b)
-{
-	return g_str_equal(a, b);
-}
-
-static void
-pvd_val_remove(gpointer val)
-{
-	NMRDiscPVD *pvd = (NMRDiscPVD *)val;
-
-	g_array_unref(pvd->gateways);
-	g_array_unref(pvd->addresses);
-	g_array_unref(pvd->routes);
-	g_array_unref(pvd->dns_servers);
-	g_array_unref(pvd->dns_domains);
-
-	g_free(pvd);
-}
-
 static void
 nm_rdisc_init (NMRDisc *rdisc)
 {
@@ -852,11 +680,6 @@ nm_rdisc_init (NMRDisc *rdisc)
 	rdisc->dns_domains = g_array_new (FALSE, FALSE, sizeof (NMRDiscDNSDomain));
 	g_array_set_clear_func (rdisc->dns_domains, dns_domain_free);
 	rdisc->hop_limit = 64;
-
-	// We create a hash table for PvDs and supply function to remove
-	// values. But, each key has for a value itself, so there is no
-	// need to remove key.
-	rdisc->pvds = g_hash_table_new_full(pvd_hash_func, pvd_cmp_func, NULL, pvd_val_remove);
 
 	/* Start at very low number so that last_rs - rtr_solicitation_interval
 	 * is much lower than nm_utils_get_monotonic_timestamp_s() at startup.
@@ -891,8 +714,6 @@ finalize (GObject *object)
 	g_array_unref (rdisc->routes);
 	g_array_unref (rdisc->dns_servers);
 	g_array_unref (rdisc->dns_domains);
-
-	g_hash_table_unref (rdisc->pvds);
 
 	G_OBJECT_CLASS (nm_rdisc_parent_class)->finalize (object);
 }

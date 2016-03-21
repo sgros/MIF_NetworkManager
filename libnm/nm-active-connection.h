@@ -82,7 +82,6 @@ gboolean                 nm_active_connection_get_default6             (NMActive
 NMIPConfig              *nm_active_connection_get_ip6_config           (NMActiveConnection *connection);
 NMDhcpConfig            *nm_active_connection_get_dhcp6_config         (NMActiveConnection *connection);
 gboolean                 nm_active_connection_get_vpn                  (NMActiveConnection *connection);
-const GPtrArray         *nm_active_connection_get_pvds                 (NMActiveConnection *connection);
 
 G_END_DECLS
 

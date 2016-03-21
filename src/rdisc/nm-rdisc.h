@@ -90,21 +90,6 @@ typedef struct {
 	guint32 lifetime;
 } NMRDiscDNSDomain;
 
-typedef struct {
-	/*
-	 * For PVD ID we use only ASCII coded UUID which is 36
-	 * characters long and we also take NULL (for precaution).
-	 */
-	char pvdid[37];
-
-	GArray *gateways;
-	GArray *addresses;
-	GArray *routes;
-	GArray *dns_servers;
-	GArray *dns_domains;
-	guint32 mtu;
-} NMRDiscPVD;
-
 typedef enum {
 	NM_RDISC_CONFIG_DHCP_LEVEL                          = 1 << 0,
 	NM_RDISC_CONFIG_GATEWAYS                            = 1 << 1,
@@ -114,13 +99,6 @@ typedef enum {
 	NM_RDISC_CONFIG_DNS_DOMAINS                         = 1 << 5,
 	NM_RDISC_CONFIG_HOP_LIMIT                           = 1 << 6,
 	NM_RDISC_CONFIG_MTU                                 = 1 << 7,
-	NM_RDISC_CONFIG_PVD                                 = 1 << 8,
-	NM_RDISC_CONFIG_PVD_GATEWAYS                        = 1 << 9,
-	NM_RDISC_CONFIG_PVD_ADDRESSES                       = 1 << 10,
-	NM_RDISC_CONFIG_PVD_ROUTES                          = 1 << 11,
-	NM_RDISC_CONFIG_PVD_DNS_SERVERS                     = 1 << 12,
-	NM_RDISC_CONFIG_PVD_DNS_DOMAINS                     = 1 << 13,
-	NM_RDISC_CONFIG_PVD_MTU                             = 1 << 14,
 } NMRDiscConfigMap;
 
 #define NM_RDISC_MAX_ADDRESSES_DEFAULT 16
@@ -154,9 +132,6 @@ typedef struct {
 	GArray *dns_domains;
 	int hop_limit;
 	guint32 mtu;
-
-	// Hash indexed by PVDID of NMRDisc structures
-	GHashTable *pvds;
 } NMRDisc;
 
 typedef struct {

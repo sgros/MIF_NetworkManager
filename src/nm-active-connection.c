@@ -83,7 +83,6 @@ enum {
 	PROP_DEFAULT6,
 	PROP_IP6_CONFIG,
 	PROP_DHCP6_CONFIG,
-	PROP_PVDS,
 	PROP_VPN,
 	PROP_MASTER,
 
@@ -474,17 +473,6 @@ device_metered_changed (GObject *object,
 	g_signal_emit (self, signals[DEVICE_METERED_CHANGED], 0, nm_device_get_metered (device));
 }
 
-static void
-device_pvd_changed (GObject *object,
-                        GParamSpec *pspec,
-                        gpointer user_data)
-{
-	NMActiveConnection *self = (NMActiveConnection *) user_data;
-
-	g_return_if_fail (NM_IS_ACTIVE_CONNECTION (self));
-	g_object_notify (G_OBJECT (self), NM_ACTIVE_CONNECTION_PVDS);
-}
-
 gboolean
 nm_active_connection_set_device (NMActiveConnection *self, NMDevice *device)
 {
@@ -521,8 +509,6 @@ nm_active_connection_set_device (NMActiveConnection *self, NMDevice *device)
 		                  G_CALLBACK (device_master_changed), self);
 		g_signal_connect (device, "notify::" NM_DEVICE_METERED,
 		                  G_CALLBACK (device_metered_changed), self);
-		g_signal_connect (device, "notify::" NM_DEVICE_PVDS,
-		                  G_CALLBACK (device_pvd_changed), self);
 
 		if (!priv->assumed) {
 			priv->pending_activation_id = g_strdup_printf ("activation::%p", (void *)self);
@@ -921,7 +907,7 @@ get_property (GObject *object, guint prop_id,
               GValue *value, GParamSpec *pspec)
 {
 	NMActiveConnectionPrivate *priv = NM_ACTIVE_CONNECTION_GET_PRIVATE (object);
-	GPtrArray *devices, *pvds;
+	GPtrArray *devices;
 	NMDevice *master_device = NULL;
 
 	switch (prop_id) {
@@ -976,11 +962,6 @@ get_property (GObject *object, guint prop_id,
 	case PROP_DHCP6_CONFIG:
 		g_value_set_string (value, "/");
 		break;
-	case PROP_PVDS:
-		pvds = g_ptr_array_sized_new (1);
-		g_ptr_array_add (pvds, NULL);
-		g_value_take_boxed (value, (char **) g_ptr_array_free (pvds, FALSE));
-		break;
 	case PROP_VPN:
 		g_value_set_boolean (value, priv->vpn);
 		break;
@@ -1010,7 +991,6 @@ _device_cleanup (NMActiveConnection *self)
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_state_changed), self);
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_master_changed), self);
 		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_metered_changed), self);
-		g_signal_handlers_disconnect_by_func (priv->device, G_CALLBACK (device_pvd_changed), self);
 	}
 
 	if (priv->pending_activation_id) {
@@ -1162,13 +1142,6 @@ nm_active_connection_class_init (NMActiveConnectionClass *ac_class)
 		                      NULL,
 		                      G_PARAM_READABLE |
 		                      G_PARAM_STATIC_STRINGS));
-
-	g_object_class_install_property
-		(object_class, PROP_PVDS,
-		 g_param_spec_boxed (NM_ACTIVE_CONNECTION_PVDS, "", "",
-		                     G_TYPE_STRV,
-		                     G_PARAM_READABLE |
-		                     G_PARAM_STATIC_STRINGS));
 
 	g_object_class_install_property
 		(object_class, PROP_VPN,

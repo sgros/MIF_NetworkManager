@@ -126,7 +126,6 @@ NM_GOBJECT_PROPERTIES_DEFINE (NMDevice,
 	PROP_LLDP_NEIGHBORS,
 	PROP_REAL,
 	PROP_SLAVES,
-	PROP_PVDS,
 	PROP_NETNS,
 );
 
@@ -373,11 +372,6 @@ typedef struct _NMDevicePrivate {
 	NMLldpListener *lldp_listener;
 
 	guint check_delete_unrealized_id;
-
-	/* Hash table of all PvDs received via device. The key to
-         * the table is PVDID, while the value is object nm_ip6_config.
-         */
-	GHashTable * pvds;
 
 	/*
 	 * Network namespace to which device belongs to.
@@ -5774,146 +5768,6 @@ rdisc_config_changed (NMRDisc *rdisc, NMRDiscConfigMap changed, NMDevice *self)
 	if (changed & NM_RDISC_CONFIG_MTU)
 		priv->ip6_mtu = rdisc->mtu;
 
-#if 0
-	if (changed & NM_RDISC_CONFIG_PVD) {
-		NMIP6Config *pvd;
-		GHashTableIter iter;
-		char * key;
-		NMRDiscPVD * value;
-		gboolean notify = FALSE;
-
-		if (!priv->pvds) {
-			priv->pvds = g_hash_table_new(nm_ip6_config_pvd_hash,
-							nm_ip6_config_pvd_cmp);
-			notify = TRUE;
-		}
-
-		g_hash_table_iter_init (&iter, rdisc->pvds);
-		pvd = NULL;
-		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
-
-			pvd = g_hash_table_lookup(priv->pvds, value->pvdid);
-			if (!pvd) {
-				pvd = nm_ip6_config_new (nm_device_get_ip_ifindex (self));
-				notify = TRUE;
-			}
-
-			/*
-			 * Initialize new pvd
-			 */
-
-			/* Set PVD ID of a new key */
-			nm_ip6_config_set_pvdid (pvd, value->pvdid);
-
-			/* Use the first gateway as ordered in router discovery cache. */
-			if (value->gateways->len) {
-				NMRDiscGateway *gateway = &g_array_index (value->gateways, NMRDiscGateway, 0);
-
-				nm_ip6_config_set_gateway (pvd, &gateway->address);
-			} else
-				nm_ip6_config_set_gateway (pvd, NULL);
-
-			// TODO: Use changed variable as above so that data structure
-			// building is faster!
-
-
-			/* Rebuild address list from router discovery cache. */
-			nm_ip6_config_reset_addresses (pvd);
-
-			/* rdisc->addresses contains at most max_addresses entries.
-			 * This is different from what the kernel does, which
-			 * also counts static and temporary addresses when checking
-			 * max_addresses.
-			 **/
-			for (i = 0; i < value->addresses->len; i++) {
-				NMRDiscAddress *discovered_address = &g_array_index (value->addresses, NMRDiscAddress, i);
-				NMPlatformIP6Address address;
-
-				memset (&address, 0, sizeof (address));
-				address.address = discovered_address->address;
-				address.plen = system_support ? 64 : 128;
-				address.timestamp = discovered_address->timestamp;
-				address.lifetime = discovered_address->lifetime;
-				address.preferred = discovered_address->preferred;
-				if (address.preferred > address.lifetime)
-					address.preferred = address.lifetime;
-				address.source = NM_IP_CONFIG_SOURCE_RDISC_PVD;
-				address.n_ifa_flags = ifa_flags;
-
-				nm_ip6_config_add_address (pvd, &address);
-			}
-
-			/* Rebuild route list from router discovery cache. */
-			nm_ip6_config_reset_routes (pvd);
-
-			for (i = 0; i < value->routes->len; i++) {
-				NMRDiscRoute *discovered_route = &g_array_index (value->routes, NMRDiscRoute, i);
-				NMPlatformIP6Route route;
-
-				/* Only accept non-default routes.  The router has no idea what the
-				 * local configuration or user preferences are, so sending routes
-				 * with a prefix length of 0 is quite rude and thus ignored.
-				 */
-				if (discovered_route->plen > 0) {
-					memset (&route, 0, sizeof (route));
-					route.network = discovered_route->network;
-					route.plen = discovered_route->plen;
-					route.gateway = discovered_route->gateway;
-					route.source = NM_IP_CONFIG_SOURCE_RDISC_PVD;
-					route.metric = nm_device_get_ip6_route_metric (self);
-
-					nm_ip6_config_add_route (pvd, &route);
-				}
-			}
-
-			/* Rebuild DNS server list from router discovery cache. */
-			nm_ip6_config_reset_nameservers (pvd);
-
-			for (i = 0; i < value->dns_servers->len; i++) {
-				NMRDiscDNSServer *discovered_server = &g_array_index (value->dns_servers, NMRDiscDNSServer, i);
-
-				nm_ip6_config_add_nameserver (pvd, &discovered_server->address);
-			}
-
-			/* Rebuild domain list from router discovery cache. */
-			nm_ip6_config_reset_domains (pvd);
-
-			for (i = 0; i < value->dns_domains->len; i++) {
-				NMRDiscDNSDomain *discovered_domain = &g_array_index (value->dns_domains, NMRDiscDNSDomain, i);
-
-				nm_ip6_config_add_domain (pvd, discovered_domain->domain);
-			}
-
-			dhcp6_cleanup (self, CLEANUP_TYPE_DECONFIGURE, TRUE);
-
-			g_hash_table_replace (priv->pvds, nm_ip6_config_get_pvdid (pvd), pvd);
-
-			if (!nm_exported_object_is_exported (NM_EXPORTED_OBJECT (pvd)))
-				nm_exported_object_export (NM_EXPORTED_OBJECT (pvd));
-		}
-
-		/*
-		 * Iterate over existing PvDs to check if they are still
-		 * present. Remove the ones that are not!
-		 */
-		g_hash_table_iter_init (&iter, priv->pvds);
-		pvd = NULL;
-		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
-
-			pvd = g_hash_table_lookup (rdisc->pvds, value->pvdid);
-			if (!pvd) {
-				// TODO: Check if the PvD is properly released!
-				g_hash_table_remove (priv->pvds, value);
-				notify = TRUE;
-			}
-
-		}
-
-		if (notify)
-			g_object_notify (G_OBJECT (self), NM_DEVICE_PVDS);
-	}
-#endif
-
 	nm_device_activate_schedule_ip6_config_result (self);
 }
 
@@ -7764,40 +7618,6 @@ impl_device_delete (NMDevice *self, GDBusMethodInvocation *context)
 	               TRUE,
 	               delete_cb,
 	               NULL);
-}
-
-static void
-impl_device_get_pvds (NMDevice *self, GDBusMethodInvocation *context)
-{
-	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
-
-	gs_free const char **paths = NULL;
-	guint i, len;
-	GHashTableIter iter;
-	char * key;
-	NMIP6Config * value;
-
-	if (priv->pvds)
-		len = g_hash_table_size (priv->pvds);
-	else
-		len = 0;
-
-	paths = g_new (const char *, len + 1);
-	i = 0;
-
-	if (priv->pvds) {
-		g_hash_table_iter_init (&iter, priv->pvds);
-		while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&value)) {
-			const char *path;
-
-			path = nm_exported_object_get_path (NM_EXPORTED_OBJECT (value));
-			paths[i++] = path;
-		}
-	}
-	paths[i++] = NULL;
-
-	g_dbus_method_invocation_return_value (context,
-					g_variant_new ("(^ao)", (char **) paths));
 }
 
 static gboolean
@@ -11702,31 +11522,6 @@ get_property (GObject *object, guint prop_id,
 		g_value_take_boxed (value, slave_list);
 		break;
         }
-	case PROP_PVDS: {
-		char **pvd_list;
-		guint i, len;
-		char * key;
-		NMIP6Config * val;
-
-		len = priv->pvds ? g_hash_table_size (priv->pvds) : 0;
-
-		pvd_list = g_new (char *, len + 1);
-		i = 0;
-
-		if (priv->pvds) {
-			g_hash_table_iter_init (&iter, priv->pvds);
-			while (g_hash_table_iter_next (&iter, (gpointer)&key, (gpointer)&val)) {
-				const char *path;
-
-				path = nm_exported_object_get_path (NM_EXPORTED_OBJECT (val));
-				if (path)
-					pvd_list[i++] = g_strdup(path);
-			}
-		}
-		pvd_list[i] = NULL;
-		g_value_take_boxed (value, pvd_list);
-		break;
-	}
 	case PROP_NETNS:
 		nm_utils_g_value_set_object_path (value, priv->netns);
 		break;
@@ -11975,13 +11770,6 @@ nm_device_class_init (NMDeviceClass *klass)
 	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 
 	g_object_class_install_property
-	    (object_class, PROP_PVDS,
-	     g_param_spec_boxed (NM_DEVICE_PVDS, "", "",
-	                         G_TYPE_STRV,
-	                         G_PARAM_READABLE |
-	                         G_PARAM_STATIC_STRINGS));
-
-	g_object_class_install_property
 	    (object_class, PROP_NETNS,
 	     g_param_spec_string (NM_DEVICE_NETNS, "", "",
 	                         NULL,
@@ -12055,6 +11843,5 @@ nm_device_class_init (NMDeviceClass *klass)
 	                                        "GetAppliedConnection", impl_device_get_applied_connection,
 	                                        "Disconnect", impl_device_disconnect,
 	                                        "Delete", impl_device_delete,
-	                                        "GetProvisioningDomains", impl_device_get_pvds,
 	                                        NULL);
 }
