@@ -122,9 +122,9 @@ static struct {
 	.level_desc = {
 		[LOGL_TRACE] = { "TRACE", "<trace>", LOG_DEBUG,   G_LOG_LEVEL_DEBUG,   _LOG_FORMAT_FLAG_LEVEL_DEBUG },
 		[LOGL_DEBUG] = { "DEBUG", "<debug>", LOG_INFO,    G_LOG_LEVEL_DEBUG,   _LOG_FORMAT_FLAG_LEVEL_DEBUG },
-		[LOGL_INFO]  = { "INFO",  "<info>",  LOG_INFO,    G_LOG_LEVEL_MESSAGE, _LOG_FORMAT_FLAG_LEVEL_INFO },
-		[LOGL_WARN]  = { "WARN",  "<warn>",  LOG_WARNING, G_LOG_LEVEL_WARNING, _LOG_FORMAT_FLAG_LEVEL_INFO },
-		[LOGL_ERR]   = { "ERR",   "<error>", LOG_ERR,     G_LOG_LEVEL_WARNING, _LOG_FORMAT_FLAG_LEVEL_ERROR },
+		[LOGL_INFO]  = { "INFO",  "<info>",  LOG_INFO,    G_LOG_LEVEL_INFO,    _LOG_FORMAT_FLAG_LEVEL_INFO },
+		[LOGL_WARN]  = { "WARN",  "<warn>",  LOG_WARNING, G_LOG_LEVEL_MESSAGE, _LOG_FORMAT_FLAG_LEVEL_INFO },
+		[LOGL_ERR]   = { "ERR",   "<error>", LOG_ERR,     G_LOG_LEVEL_MESSAGE, _LOG_FORMAT_FLAG_LEVEL_ERROR },
 		[_LOGL_OFF]  = { "OFF",   NULL,      0,           0,                   0 },
 		[_LOGL_KEEP] = { "KEEP",  NULL,      0,           0,                   0 },
 	},
@@ -164,6 +164,7 @@ static struct {
 		{ LOGD_DCB,       "DCB" },
 		{ LOGD_DISPATCH,  "DISPATCH" },
 		{ LOGD_AUDIT,     "AUDIT" },
+		{ LOGD_SYSTEMD,   "SYSTEMD" },
 		{ LOGD_NETNS,     "NETNS" },
 		{ 0, NULL }
 		/* keep _DOMAIN_DESC_LEN in sync */

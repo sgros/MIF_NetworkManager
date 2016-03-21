@@ -35,9 +35,9 @@
 #include <string.h>
 #include <sys/resource.h>
 
+#include "main-utils.h"
 #include "nm-dbus-interface.h"
 #include "NetworkManagerUtils.h"
-#include "main-utils.h"
 #include "nm-manager.h"
 #include "nm-netns-controller.h"
 #include "nm-linux-platform.h"
@@ -51,6 +51,7 @@
 #include "nm-auth-manager.h"
 #include "nm-core-internal.h"
 #include "nm-exported-object.h"
+#include "nm-sd.h"
 
 #if !defined(NM_DIST_VERSION)
 # define NM_DIST_VERSION VERSION
@@ -272,6 +273,7 @@ main (int argc, char *argv[])
 	gboolean wrote_pidfile = FALSE;
 	char *bad_domains = NULL;
 	NMConfigCmdLineOptions *config_cli;
+	guint sd_id = 0;
 
 	nm_g_type_init ();
 
@@ -308,12 +310,7 @@ main (int argc, char *argv[])
 
 	nm_main_utils_ensure_not_running_pidfile (global_opt.pidfile);
 
-	/* Ensure state directory exists */
-	if (g_mkdir_with_parents (NMSTATEDIR, 0755) != 0) {
-		fprintf (stderr, "Cannot create '%s': %s", NMSTATEDIR, strerror (errno));
-		exit (1);
-	}
-
+	nm_main_utils_ensure_statedir ();
 	nm_main_utils_ensure_rundir ();
 
 	/* When running from the build directory, determine our build directory
@@ -481,8 +478,11 @@ main (int argc, char *argv[])
 
 	success = TRUE;
 
-	if (configure_and_quit == FALSE)
+	if (configure_and_quit == FALSE) {
+		sd_id = nm_sd_event_attach_default ();
+
 		g_main_loop_run (main_loop);
+	}
 
 done:
 	nm_exported_object_class_set_quitting ();
@@ -495,5 +495,8 @@ done:
 		unlink (global_opt.pidfile);
 
 	nm_log_info (LOGD_CORE, "exiting (%s)", success ? "success" : "error");
+
+	nm_clear_g_source (&sd_id);
+
 	exit (success ? 0 : 1);
 }

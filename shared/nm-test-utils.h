@@ -71,6 +71,8 @@
  *
  * "TRACE", this is shorthand for "log-level=TRACE".
  *
+ * "D", this is shorthand for "log-level=TRACE,no-expect-message".
+ *
  * "sudo-cmd=PATH": when running root tests as normal user, the test will execute
  *   itself by invoking sudo at PATH.
  *   For example
@@ -341,9 +343,14 @@ __nmtst_init (int *argc, char ***argv, gboolean assert_logging, const char *log_
 			} else if (!g_ascii_strncasecmp (debug, "log-level=", strlen ("log-level="))) {
 				g_free (c_log_level);
 				log_level = c_log_level = g_strdup (&debug[strlen ("log-level=")]);
+			} else if (!g_ascii_strcasecmp (debug, "D")) {
+				/* shorthand for "log-level=TRACE,no-expect-message" */
+				g_free (c_log_level);
+				log_level = c_log_level = g_strdup ("TRACE");
+				no_expect_message = TRUE;
 			} else if (!g_ascii_strcasecmp (debug, "TRACE")) {
 				g_free (c_log_level);
-				log_level = c_log_level = g_strdup (debug);
+				log_level = c_log_level = g_strdup ("TRACE");
 			} else if (!g_ascii_strncasecmp (debug, "log-domains=", strlen ("log-domains="))) {
 				g_free (c_log_domains);
 				log_domains = c_log_domains = g_strdup (&debug[strlen ("log-domains=")]);
@@ -852,6 +859,18 @@ nmtst_main_loop_run (GMainLoop *loop, int timeout_ms)
 	/* if the timeout was reached, return FALSE. */
 	return loopx != NULL;
 }
+
+inline static void
+_nmtst_main_loop_quit_on_notify (GObject *object, GParamSpec *pspec, gpointer user_data)
+{
+	GMainLoop *loop = user_data;
+
+	g_assert (G_IS_OBJECT (object));
+	g_assert (loop);
+
+	g_main_loop_quit (loop);
+}
+#define nmtst_main_loop_quit_on_notify ((GCallback) _nmtst_main_loop_quit_on_notify)
 
 /*****************************************************************************/
 
@@ -1773,6 +1792,34 @@ nmtst_create_connection_from_keyfile (const char *keyfile_str, const char *keyfi
 #endif
 
 #ifdef __NM_CONNECTION_H__
+
+#define nmtst_assert_variant_is_of_type(variant, type) \
+	G_STMT_START { \
+		GVariant *_variantx = (variant); \
+		\
+		g_assert (_variantx); \
+		g_assert (g_variant_is_of_type (_variantx, (type))); \
+	} G_STMT_END
+
+#define nmtst_assert_variant_uint32(variant, val) \
+	G_STMT_START { \
+		GVariant *_variant = (variant); \
+		\
+		nmtst_assert_variant_is_of_type (_variant, G_VARIANT_TYPE_UINT32); \
+		g_assert_cmpint (g_variant_get_uint32 (_variant), ==, (val)); \
+	} G_STMT_END
+
+#define nmtst_assert_variant_string(variant, str) \
+	G_STMT_START { \
+		gsize _l; \
+		GVariant *_variant = (variant); \
+		const char *_str = (str); \
+		\
+		nmtst_assert_variant_is_of_type (_variant, G_VARIANT_TYPE_STRING); \
+		g_assert (_str); \
+		g_assert_cmpstr (g_variant_get_string (_variant, &_l), ==, _str); \
+		g_assert_cmpint (_l, ==, strlen (_str)); \
+	} G_STMT_END
 
 typedef enum {
 	NMTST_VARIANT_EDITOR_CONNECTION,

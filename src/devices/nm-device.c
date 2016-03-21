@@ -1243,8 +1243,7 @@ update_dynamic_ip_setup (NMDevice *self)
 		nm_lldp_listener_stop (priv->lldp_listener);
 		addr = nm_platform_link_get_address (nm_device_get_platform(self), priv->ifindex, &addr_length);
 
-		if (!nm_lldp_listener_start (priv->lldp_listener, nm_device_get_ifindex (self),
-		                             nm_device_get_iface (self), addr, addr_length, &error)) {
+		if (!nm_lldp_listener_start (priv->lldp_listener, nm_device_get_ifindex (self), &error)) {
 			_LOGD (LOGD_DEVICE, "LLDP listener %p could not be restarted: %s",
 			       priv->lldp_listener, error->message);
 			g_clear_error (&error);
@@ -3572,8 +3571,7 @@ activate_stage2_device_config (NMDevice *self)
 
 		addr = nm_platform_link_get_address (nm_device_get_platform(self), priv->ifindex, &addr_length);
 
-		if (nm_lldp_listener_start (priv->lldp_listener, nm_device_get_ifindex (self),
-		                            nm_device_get_iface (self), addr, addr_length, &error))
+		if (nm_lldp_listener_start (priv->lldp_listener, nm_device_get_ifindex (self), &error))
 			_LOGD (LOGD_DEVICE, "LLDP listener %p started", priv->lldp_listener);
 		else {
 			_LOGD (LOGD_DEVICE, "LLDP listener %p could not be started: %s",
@@ -4682,10 +4680,7 @@ reserve_shared_ip (NMDevice *self, NMSettingIPConfig *s_ip4, NMPlatformIP4Addres
 			}
 		}
 		nm_platform_ip4_address_set_addr (address, start + count, 24);
-
-		g_hash_table_insert (shared_ips,
-		                     GUINT_TO_POINTER (address->address),
-		                     GUINT_TO_POINTER (TRUE));
+		g_hash_table_add (shared_ips, GUINT_TO_POINTER (address->address));
 	}
 
 	return TRUE;
@@ -5859,7 +5854,7 @@ addrconf6_start (NMDevice *self, NMSettingIP6ConfigPrivacy use_tempaddr)
 	s_ip6 = NM_SETTING_IP6_CONFIG (nm_connection_get_setting_ip6_config (connection));
 	g_assert (s_ip6);
 
-	priv->rdisc = nm_lndp_rdisc_new (priv->netns,
+	priv->rdisc = nm_lndp_rdisc_new (NM_PLATFORM_GET,
 	                                 nm_device_get_ip_ifindex (self),
 	                                 nm_device_get_ip_iface (self),
 	                                 nm_connection_get_uuid (connection),
@@ -9676,14 +9671,13 @@ nm_device_recheck_available_connections (NMDevice *self)
 			connection = NM_CONNECTION (iter->data);
 
 			if (nm_device_check_connection_available (self,
-				                                  connection,
-				                                  NM_DEVICE_CHECK_CON_AVAILABLE_NONE,
-				                                  NULL)) {
+			                                          connection,
+			                                          NM_DEVICE_CHECK_CON_AVAILABLE_NONE,
+			                                          NULL)) {
 				if (available_connections_add (self, connection))
 					changed = TRUE;
-			} else {
-				if (prune_list && g_hash_table_remove (prune_list, connection))
-					changed = TRUE;
+				if (prune_list)
+					g_hash_table_remove (prune_list, connection);
 			}
 		}
 

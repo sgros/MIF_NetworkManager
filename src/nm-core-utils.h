@@ -317,6 +317,9 @@ int nm_utils_cmp_connection_by_autoconnect_priority (NMConnection **a, NMConnect
 void nm_utils_log_connection_diff (NMConnection *connection, NMConnection *diff_base, guint32 level, guint64 domain, const char *name, const char *prefix);
 
 #define NM_UTILS_NS_PER_SECOND  ((gint64) 1000000000)
+#define NM_UTILS_NS_PER_MSEC    ((gint64) 1000000)
+#define NM_UTILS_NS_TO_MSEC_CEIL(nsec)      (((nsec) + (NM_UTILS_NS_PER_MSEC - 1)) / NM_UTILS_NS_PER_MSEC)
+
 gint64 nm_utils_get_monotonic_timestamp_ns (void);
 gint64 nm_utils_get_monotonic_timestamp_us (void);
 gint64 nm_utils_get_monotonic_timestamp_ms (void);
@@ -402,14 +405,12 @@ void nm_utils_ifname_cpy (char *dst, const char *name);
 
 guint32 nm_utils_lifetime_rebase_relative_time_on_now (guint32 timestamp,
                                                        guint32 duration,
-                                                       guint32 now,
-                                                       guint32 padding);
+                                                       gint32 now);
 
 gboolean nm_utils_lifetime_get (guint32 timestamp,
                                 guint32 lifetime,
                                 guint32 preferred,
-                                guint32 now,
-                                guint32 padding,
+                                gint32 now,
                                 guint32 *out_lifetime,
                                 guint32 *out_preferred);
 

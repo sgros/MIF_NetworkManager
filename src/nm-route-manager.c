@@ -75,6 +75,12 @@ typedef struct {
 
 G_DEFINE_TYPE (NMRouteManager, nm_route_manager, G_TYPE_OBJECT);
 
+NM_GOBJECT_PROPERTIES_DEFINE_BASE (
+	PROP_PLATFORM,
+);
+
+NM_DEFINE_SINGLETON_GETTER (NMRouteManager, nm_route_manager_get, NM_TYPE_ROUTE_MANAGER);
+
 /*********************************************************************************************/
 
 typedef struct {
@@ -1144,14 +1150,30 @@ nm_route_manager_new(void)
 /*********************************************************************************************/
 
 static void
+set_property (GObject *object, guint prop_id,
+              const GValue *value, GParamSpec *pspec)
+{
+	NMRouteManager *self = NM_ROUTE_MANAGER (object);
+	NMRouteManagerPrivate *priv = NM_ROUTE_MANAGER_GET_PRIVATE (self);
+
+	switch (prop_id) {
+	case PROP_PLATFORM:
+		/* construct-only */
+		priv->platform = g_value_get_object (value) ? : NM_PLATFORM_GET;
+		if (!priv->platform)
+			g_return_if_reached ();
+		g_object_ref (priv->platform);
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
+}
+
+static void
 nm_route_manager_init (NMRouteManager *self)
 {
 	NMRouteManagerPrivate *priv = NM_ROUTE_MANAGER_GET_PRIVATE (self);
-
-	priv->netns = g_object_ref (nm_netns_controller_get_active_netns());
-
-	if (priv->netns == NULL)
-		nm_log_warn (LOGD_NETNS, "Network namespace while initializin route manager is not defined");
 
 	priv->ip4_routes.entries = g_array_new (FALSE, FALSE, sizeof (NMPlatformIP4Route));
 	priv->ip6_routes.entries = g_array_new (FALSE, FALSE, sizeof (NMPlatformIP6Route));
@@ -1167,6 +1189,14 @@ nm_route_manager_init (NMRouteManager *self)
 	                                                         (GDestroyNotify) _ip4_device_routes_purge_entry_free);
 }
 
+NMRouteManager *
+nm_route_manager_new (NMPlatform *platform)
+{
+	return g_object_new (NM_TYPE_ROUTE_MANAGER,
+	                     NM_ROUTE_MANAGER_PLATFORM, platform,
+	                     NULL);
+}
+
 static void
 dispose (GObject *object)
 {
@@ -1175,8 +1205,6 @@ dispose (GObject *object)
 
 	g_hash_table_remove_all (priv->ip4_device_routes.entries);
 	_ip4_device_routes_cancel (self);
-
-	g_clear_object (&priv->netns);
 
 	G_OBJECT_CLASS (nm_route_manager_parent_class)->dispose (object);
 }
@@ -1197,6 +1225,8 @@ finalize (GObject *object)
 
 	g_hash_table_unref (priv->ip4_device_routes.entries);
 
+	g_clear_object (&priv->platform);
+
 	G_OBJECT_CLASS (nm_route_manager_parent_class)->finalize (object);
 }
 
@@ -1208,6 +1238,15 @@ nm_route_manager_class_init (NMRouteManagerClass *klass)
 	g_type_class_add_private (klass, sizeof (NMRouteManagerPrivate));
 
 	/* virtual methods */
+	object_class->set_property = set_property;
 	object_class->dispose = dispose;
 	object_class->finalize = finalize;
+
+	obj_properties[PROP_PLATFORM] =
+	    g_param_spec_object (NM_ROUTE_MANAGER_PLATFORM, "", "",
+	                         NM_TYPE_PLATFORM,
+	                         G_PARAM_WRITABLE |
+	                         G_PARAM_CONSTRUCT_ONLY |
+	                         G_PARAM_STATIC_STRINGS);
+	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
 }

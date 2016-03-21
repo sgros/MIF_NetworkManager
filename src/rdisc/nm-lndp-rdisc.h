@@ -45,7 +45,7 @@ typedef struct {
 
 GType nm_lndp_rdisc_get_type (void);
 
-NMRDisc *nm_lndp_rdisc_new (NMNetns *netns,
+NMRDisc *nm_lndp_rdisc_new (NMPlatform *platform,
                             int ifindex,
                             const char *ifname,
                             const char *uuid,

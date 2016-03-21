@@ -1398,7 +1398,8 @@ complete_connection (NMDevice *device,
 	/* Default to an ethernet-only connection, but if a PPPoE setting was given
 	 * then PPPoE should be our connection type.
 	 */
-	nm_utils_complete_generic (connection,
+	nm_utils_complete_generic (NM_PLATFORM_GET,
+	                           connection,
 	                           s_pppoe ? NM_SETTING_PPPOE_SETTING_NAME : NM_SETTING_WIRED_SETTING_NAME,
 	                           existing_connections,
 	                           NULL,
@@ -1507,6 +1508,11 @@ update_connection (NMDevice *device, NMConnection *connection)
 		s_wired = (NMSettingWired *) nm_setting_wired_new ();
 		nm_connection_add_setting (connection, (NMSetting *) s_wired);
 	}
+
+	g_object_set (nm_connection_get_setting_connection (connection),
+	              NM_SETTING_CONNECTION_TYPE, nm_connection_get_setting_pppoe (connection)
+	                                          ? NM_SETTING_PPPOE_SETTING_NAME
+	                                          : NM_SETTING_WIRED_SETTING_NAME, NULL);
 
 	/* If the device reports a permanent address, use that for the MAC address
 	 * and the current MAC, if different, is the cloned MAC.

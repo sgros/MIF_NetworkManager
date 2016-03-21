@@ -287,8 +287,10 @@ _NM_IN_STRSET_streq (const char *x, const char *s)
 
 #if NM_MORE_ASSERTS
 #define nm_assert(cond) G_STMT_START { g_assert (cond); } G_STMT_END
+#define nm_assert_not_reached() G_STMT_START { g_assert_not_reached (); } G_STMT_END
 #else
 #define nm_assert(cond) G_STMT_START { if (FALSE) { if (cond) { } } } G_STMT_END
+#define nm_assert_not_reached() G_STMT_START { ; } G_STMT_END
 #endif
 
 /*****************************************************************************/
@@ -312,6 +314,38 @@ _notify (obj_type *obj, _PropertyEnums prop) \
 }
 
 /*****************************************************************************/
+
+#define nm_unauto(pp)                                               \
+    ({                                                              \
+        G_STATIC_ASSERT (sizeof *(pp) == sizeof (gpointer));        \
+        gpointer *_pp = (gpointer *) (pp);                          \
+        gpointer _p = *_pp;                                         \
+                                                                    \
+        *_pp = NULL;                                                \
+        _p;                                                         \
+    })
+
+/*****************************************************************************/
+
+static inline gpointer
+nm_g_object_ref (gpointer obj)
+{
+	/* g_object_ref() doesn't accept NULL. */
+	if (obj)
+		g_object_ref (obj);
+	return obj;
+}
+
+static inline void
+nm_g_object_unref (gpointer obj)
+{
+	/* g_object_unref() doesn't accept NULL. Usully, we workaround that
+	 * by using g_clear_object(), but sometimes that is not convinient
+	 * (for example as as destroy function for a hash table that can contain
+	 * NULL values). */
+	if (obj)
+		g_object_unref (obj);
+}
 
 static inline gboolean
 nm_clear_g_source (guint *id)

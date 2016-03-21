@@ -64,6 +64,8 @@ SYSTEMD_NM_CFLAGS_PATHS = \
 	-I$(top_srcdir)/src/systemd
 
 libsystemd_nm_la_SOURCES = \
+	systemd/nm-sd.c \
+	systemd/nm-sd.h \
 	systemd/nm-sd-adapt.c \
 	systemd/nm-sd-adapt.h \
 	systemd/src/basic/alloc-util.c \
@@ -71,6 +73,8 @@ libsystemd_nm_la_SOURCES = \
 	systemd/src/basic/async.h \
 	systemd/src/basic/escape.c \
 	systemd/src/basic/escape.h \
+	systemd/src/basic/ether-addr-util.c \
+	systemd/src/basic/ether-addr-util.h \
 	systemd/src/basic/fd-util.c \
 	systemd/src/basic/fd-util.h \
 	systemd/src/basic/fileio.c \
@@ -106,6 +110,7 @@ libsystemd_nm_la_SOURCES = \
 	systemd/src/basic/set.h \
 	systemd/src/basic/siphash24.c \
 	systemd/src/basic/siphash24.h \
+	systemd/src/basic/socket-util.c \
 	systemd/src/basic/socket-util.h \
 	systemd/src/basic/sparse-endian.h \
 	systemd/src/basic/stdio-util.h \
@@ -138,14 +143,11 @@ libsystemd_nm_la_SOURCES = \
 	systemd/src/libsystemd-network/dhcp6-network.c \
 	systemd/src/libsystemd-network/dhcp6-option.c \
 	systemd/src/libsystemd-network/dhcp6-protocol.h \
-	systemd/src/libsystemd-network/lldp-internal.c \
 	systemd/src/libsystemd-network/lldp-internal.h \
+	systemd/src/libsystemd-network/lldp-neighbor.c \
+	systemd/src/libsystemd-network/lldp-neighbor.h \
 	systemd/src/libsystemd-network/lldp-network.c \
 	systemd/src/libsystemd-network/lldp-network.h \
-	systemd/src/libsystemd-network/lldp-port.c \
-	systemd/src/libsystemd-network/lldp-port.h \
-	systemd/src/libsystemd-network/lldp-tlv.c \
-	systemd/src/libsystemd-network/lldp-tlv.h \
 	systemd/src/libsystemd-network/lldp.h \
 	systemd/src/libsystemd-network/network-internal.c \
 	systemd/src/libsystemd-network/network-internal.h \
@@ -156,6 +158,7 @@ libsystemd_nm_la_SOURCES = \
 	systemd/src/libsystemd-network/sd-ipv4acd.c \
 	systemd/src/libsystemd-network/sd-ipv4ll.c \
 	systemd/src/libsystemd-network/sd-lldp.c \
+	systemd/src/libsystemd/sd-event/sd-event.c \
 	systemd/src/libsystemd/sd-id128/sd-id128.c \
 	systemd/src/shared/dns-domain.c \
 	systemd/src/shared/dns-domain.h \
@@ -645,7 +648,7 @@ EXTRA_DIST = \
 rundir=$(runstatedir)/NetworkManager
 statedir=$(localstatedir)/lib/NetworkManager
 install-data-hook:
-	$(mkinstalldirs) -m 0700 $(DESTDIR)$(rundir)
+	$(mkinstalldirs) -m 0755 $(DESTDIR)$(rundir)
 	$(mkinstalldirs) -m 0700 $(DESTDIR)$(statedir)
 	$(mkinstalldirs) -m 0755 $(DESTDIR)$(pkglibdir)
 

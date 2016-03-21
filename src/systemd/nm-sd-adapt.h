@@ -53,7 +53,7 @@ _slog_level_to_nm (int slevel)
 	const int _nm_e = (error); \
 	const NMLogLevel _nm_l = _slog_level_to_nm ((level)); \
 	\
-	if (nm_logging_enabled (_nm_l, LOGD_DHCP)) { \
+	if (nm_logging_enabled (_nm_l, LOGD_SYSTEMD)) { \
 		const char *_nm_location = strrchr ((""file), '/'); \
 		\
 		_nm_log_impl (_nm_location ? _nm_location + 1 : (""file), (line), (func), _nm_l, LOGD_DHCP, _nm_e, ("%s"format), "libsystemd: ", ## __VA_ARGS__); \
@@ -102,12 +102,25 @@ G_STMT_START { \
 #endif
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/ioctl.h>
 
 #include <net/if_arp.h>
 
 /* Missing in Linux 3.2.0, in Ubuntu 12.04 */
 #ifndef BPF_XOR
 #define BPF_XOR 0xa0
+#endif
+
+#ifndef ETHERTYPE_LLDP
+#define ETHERTYPE_LLDP 0x88cc
+#endif
+
+#ifndef HAVE_SECURE_GETENV
+#  ifdef HAVE___SECURE_GETENV
+#    define secure_getenv __secure_getenv
+#  else
+#    error neither secure_getenv nor __secure_getenv is available
+#  endif
 #endif
 
 /*****************************************************************************/
@@ -117,6 +130,14 @@ typedef guint16 char16_t;
 typedef guint32 char32_t;
 
 /*****************************************************************************/
+
+#define PID_TO_PTR(p) ((void*) ((uintptr_t) p))
+
+static inline int
+sd_notify (int unset_environment, const char *state)
+{
+	return 0;
+}
 
 /* Can't include both net/if.h and linux/if.h; so have to define this here */
 #ifndef IFNAMSIZ

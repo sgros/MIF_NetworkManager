@@ -36,14 +36,15 @@
  * Forward declare if_nametoindex. */
 extern unsigned int if_nametoindex (const char *__ifname);
 
+#include "main-utils.h"
 #include "NetworkManagerUtils.h"
 #include "nm-linux-platform.h"
 #include "nm-dhcp-manager.h"
-#include "main-utils.h"
 #include "nm-rdisc.h"
 #include "nm-lndp-rdisc.h"
 #include "nm-utils.h"
 #include "nm-setting-ip6-config.h"
+#include "nm-sd.h"
 
 #include "nm-netns-controller.h"
 
@@ -347,6 +348,7 @@ main (int argc, char *argv[])
 	size_t hwaddr_len = 0;
 	gconstpointer tmp;
 	gs_free NMUtilsIPv6IfaceId *iid = NULL;
+	guint sd_id;
 
 	nm_g_type_init ();
 
@@ -473,7 +475,7 @@ main (int argc, char *argv[])
 	if (global_opt.slaac) {
 		nm_platform_link_set_user_ipv6ll_enabled (NM_PLATFORM_GET, ifindex, TRUE);
 
-		rdisc = nm_lndp_rdisc_new (nm_netns_controller_get_root_netns (), ifindex, global_opt.ifname, global_opt.uuid, global_opt.addr_gen_mode, NULL);
+		rdisc = nm_lndp_rdisc_new (NM_PLATFORM_GET, ifindex, global_opt.ifname, global_opt.uuid, global_opt.addr_gen_mode, NULL);
 		g_assert (rdisc);
 
 		if (iid)
@@ -499,6 +501,8 @@ main (int argc, char *argv[])
 		nm_rdisc_start (rdisc);
 	}
 
+	sd_id = nm_sd_event_attach_default ();
+
 	g_main_loop_run (main_loop);
 
 	g_clear_pointer (&hwaddr, g_byte_array_unref);
@@ -507,6 +511,8 @@ main (int argc, char *argv[])
 		unlink (pidfile);
 
 	nm_log_info (LOGD_CORE, "exiting");
+
+	nm_clear_g_source (&sd_id);
 	exit (0);
 }
 

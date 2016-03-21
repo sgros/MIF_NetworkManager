@@ -761,7 +761,7 @@ nm_supplicant_config_add_setting_wireless_security (NMSupplicantConfig *self,
 	} else {
 		/* 802.1x for Dynamic WEP and WPA-Enterprise */
 		if (!strcmp (key_mgmt, "ieee8021x") || !strcmp (key_mgmt, "wpa-eap")) {
-		    if (!setting_8021x) {
+			if (!setting_8021x) {
 				g_set_error (error, NM_SUPPLICANT_ERROR, NM_SUPPLICANT_ERROR_CONFIG,
 				             "Cannot set key-mgmt %s with missing 8021x setting", key_mgmt);
 				return FALSE;
@@ -1031,6 +1031,14 @@ nm_supplicant_config_add_setting_8021x (NMSupplicantConfig *self,
 	if (!ADD_STRING_LIST_VAL (self, setting, 802_1x, altsubject_match, altsubject_matches, "altsubject_match", ';', FALSE, FALSE, error))
 		return FALSE;
 	if (!ADD_STRING_LIST_VAL (self, setting, 802_1x, phase2_altsubject_match, phase2_altsubject_matches, "altsubject_match2", ';', FALSE, FALSE, error))
+		return FALSE;
+
+	/* Domain suffix match */
+	value = nm_setting_802_1x_get_domain_suffix_match (setting);
+	if (!add_string_val (self, value, "domain_suffix_match", FALSE, FALSE, error))
+		return FALSE;
+	value = nm_setting_802_1x_get_phase2_domain_suffix_match (setting);
+	if (!add_string_val (self, value, "domain_suffix_match2", FALSE, FALSE, error))
 		return FALSE;
 
 	/* Private key */

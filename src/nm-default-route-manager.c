@@ -60,6 +60,12 @@ typedef struct {
 
 G_DEFINE_TYPE (NMDefaultRouteManager, nm_default_route_manager, G_TYPE_OBJECT)
 
+NM_GOBJECT_PROPERTIES_DEFINE_BASE (
+	PROP_PLATFORM,
+);
+
+NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get, NM_TYPE_DEFAULT_ROUTE_MANAGER);
+
 #define _NMLOG_PREFIX_NAME   "default-route"
 #undef  _NMLOG_ENABLED
 #define _NMLOG_ENABLED(level, addr_family) \
@@ -279,7 +285,7 @@ _platform_route_sync_add (const VTableIP *vtable, NMDefaultRouteManager *self, g
 		return FALSE;
 
 	if (vtable->vt->is_ip4) {
-		success = nm_platform_ip4_route_add (nm_netns_get_platform(priv->netns),
+		success = nm_platform_ip4_route_add (priv->platform,
 		                                     entry->route.rx.ifindex,
 		                                     entry->route.rx.source,
 		                                     0,
@@ -289,7 +295,7 @@ _platform_route_sync_add (const VTableIP *vtable, NMDefaultRouteManager *self, g
 		                                     entry->effective_metric,
 		                                     entry->route.rx.mss);
 	} else {
-		success = nm_platform_ip6_route_add (nm_netns_get_platform(priv->netns),
+		success = nm_platform_ip6_route_add (priv->platform,
 		                                     entry->route.rx.ifindex,
 		                                     entry->route.rx.source,
 		                                     in6addr_any,
@@ -347,7 +353,7 @@ _platform_route_sync_flush (const VTableIP *vtable, NMDefaultRouteManager *self,
 		 */
 		if (   !entry
 		    && (has_ifindex_synced || ifindex_to_flush == route->ifindex)) {
-			vtable->vt->route_delete_default (nm_netns_get_platform(priv->netns), route->ifindex, route->metric);
+			vtable->vt->route_delete_default (priv->platform, route->ifindex, route->metric);
 			changed = TRUE;
 		}
 	}
@@ -501,7 +507,7 @@ _resync_all (const VTableIP *vtable, NMDefaultRouteManager *self, const Entry *c
 
 	entries = vtable->get_entries (priv);
 
-	routes = vtable->vt->route_get_all (nm_netns_get_platform(priv->netns), 0, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT);
+	routes = vtable->vt->route_get_all (priv->platform, 0, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT);
 
 	assumed_metrics = _get_assumed_interface_metrics (vtable, self, routes);
 
@@ -1387,18 +1393,52 @@ nm_default_route_manager_new(void)
 /***********************************************************************************/
 
 static void
+set_property (GObject *object, guint prop_id,
+              const GValue *value, GParamSpec *pspec)
+{
+	NMDefaultRouteManager *self = NM_DEFAULT_ROUTE_MANAGER (object);
+	NMDefaultRouteManagerPrivate *priv = NM_DEFAULT_ROUTE_MANAGER_GET_PRIVATE (self);
+
+	switch (prop_id) {
+	case PROP_PLATFORM:
+		/* construct-only */
+		priv->platform = g_value_get_object (value) ? : NM_PLATFORM_GET;
+		if (!priv->platform)
+			g_return_if_reached ();
+		g_object_ref (priv->platform);
+		break;
+	default:
+		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+		break;
+	}
+}
+
+static void
 nm_default_route_manager_init (NMDefaultRouteManager *self)
 {
+}
+
+static void
+constructed (GObject *object)
+{
+	NMDefaultRouteManager *self = NM_DEFAULT_ROUTE_MANAGER (object);
 	NMDefaultRouteManagerPrivate *priv = NM_DEFAULT_ROUTE_MANAGER_GET_PRIVATE (self);
 
 	priv->entries_ip4 = g_ptr_array_new_full (0, (GDestroyNotify) _entry_free);
 	priv->entries_ip6 = g_ptr_array_new_full (0, (GDestroyNotify) _entry_free);
 
-	priv->netns = g_object_ref (nm_netns_controller_get_active_netns());
-	g_signal_connect (nm_netns_get_platform(priv->netns), NM_PLATFORM_SIGNAL_IP4_ADDRESS_CHANGED, G_CALLBACK (_platform_changed_cb), self);
-	g_signal_connect (nm_netns_get_platform(priv->netns), NM_PLATFORM_SIGNAL_IP6_ADDRESS_CHANGED, G_CALLBACK (_platform_changed_cb), self);
-	g_signal_connect (nm_netns_get_platform(priv->netns), NM_PLATFORM_SIGNAL_IP4_ROUTE_CHANGED, G_CALLBACK (_platform_changed_cb), self);
-	g_signal_connect (nm_netns_get_platform(priv->netns), NM_PLATFORM_SIGNAL_IP6_ROUTE_CHANGED, G_CALLBACK (_platform_changed_cb), self);
+	g_signal_connect (priv->platform, NM_PLATFORM_SIGNAL_IP4_ADDRESS_CHANGED, G_CALLBACK (_platform_changed_cb), self);
+	g_signal_connect (priv->platform, NM_PLATFORM_SIGNAL_IP6_ADDRESS_CHANGED, G_CALLBACK (_platform_changed_cb), self);
+	g_signal_connect (priv->platform, NM_PLATFORM_SIGNAL_IP4_ROUTE_CHANGED, G_CALLBACK (_platform_changed_cb), self);
+	g_signal_connect (priv->platform, NM_PLATFORM_SIGNAL_IP6_ROUTE_CHANGED, G_CALLBACK (_platform_changed_cb), self);
+}
+
+NMDefaultRouteManager *
+nm_default_route_manager_new (NMPlatform *platform)
+{
+	return g_object_new (NM_TYPE_DEFAULT_ROUTE_MANAGER,
+	                     NM_DEFAULT_ROUTE_MANAGER_PLATFORM, platform,
+	                     NULL);
 }
 
 static void
@@ -1443,6 +1483,17 @@ nm_default_route_manager_class_init (NMDefaultRouteManagerClass *klass)
 	g_type_class_add_private (klass, sizeof (NMDefaultRouteManagerPrivate));
 
 	/* virtual methods */
+	object_class->constructed = constructed;
 	object_class->dispose = dispose;
+	object_class->set_property = set_property;
+
+	obj_properties[PROP_PLATFORM] =
+	    g_param_spec_object (NM_DEFAULT_ROUTE_MANAGER_PLATFORM, "", "",
+	                         NM_TYPE_PLATFORM,
+	                         G_PARAM_WRITABLE |
+	                         G_PARAM_CONSTRUCT_ONLY |
+	                         G_PARAM_STATIC_STRINGS);
+	g_object_class_install_properties (object_class, _PROPERTY_ENUMS_LAST, obj_properties);
+
 }
 

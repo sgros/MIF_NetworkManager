@@ -21,7 +21,6 @@
 #ifndef __NETWORKMANAGER_RDISC_H__
 #define __NETWORKMANAGER_RDISC_H__
 
-
 #include <stdlib.h>
 #include <netinet/in.h>
 
@@ -37,6 +36,7 @@
 #define NM_IS_RDISC_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass), NM_TYPE_RDISC))
 #define NM_RDISC_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), NM_TYPE_RDISC, NMRDiscClass))
 
+#define NM_RDISC_PLATFORM       "platform"
 #define NM_RDISC_CONFIG_CHANGED "config-changed"
 #define NM_RDISC_RA_TIMEOUT     "ra-timeout"
 
@@ -115,6 +115,9 @@ typedef enum {
 typedef struct {
 	GObject parent;
 
+	NMPlatform *_platform;
+	NMPNetns *_netns;
+
 	int ifindex;
 	char *ifname;
 	char *uuid;
@@ -149,5 +152,9 @@ GType nm_rdisc_get_type (void);
 gboolean nm_rdisc_set_iid (NMRDisc *rdisc, const NMUtilsIPv6IfaceId iid);
 void nm_rdisc_start (NMRDisc *rdisc);
 void nm_rdisc_dad_failed (NMRDisc *rdisc, struct in6_addr *address);
+
+NMPlatform *nm_rdisc_get_platform (NMRDisc *self);
+NMPNetns *nm_rdisc_netns_get (NMRDisc *self);
+gboolean nm_rdisc_netns_push (NMRDisc *self, NMPNetns **netns);
 
 #endif /* __NETWORKMANAGER_RDISC_H__ */

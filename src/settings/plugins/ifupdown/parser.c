@@ -1,4 +1,4 @@
-/* -*- Mode: C; tab-width: 5; indent-tabs-mode: t; c-basic-offset: 5 -*- */
+/* -*- Mode: C; tab-width: 4; indent-tabs-mode: t; c-basic-offset: 4 -*- */
 
 /* NetworkManager system settings service (ifupdown)
  *
@@ -94,6 +94,8 @@ update_wireless_setting_from_if_block(NMConnection *connection,
 	const gchar* value = ifparser_getkey (block, "inet");
 	struct _Mapping mapping[] = {
 		{"ssid", "ssid"},
+		{"essid", "ssid"},
+		{"mode", "mode"},
 		{ NULL, NULL}
 	};
 
@@ -112,14 +114,22 @@ update_wireless_setting_from_if_block(NMConnection *connection,
 			const gchar* newkey = map_by_mapping(mapping, curr->key+wireless_l);
 			nm_log_info (LOGD_SETTINGS, "wireless setting key: %s='%s'", newkey, curr->data);
 			if(newkey && !strcmp("ssid", newkey)) {
-				GByteArray *ssid;
+				GBytes *ssid;
 				gint len = strlen(curr->data);
 
-				ssid = g_byte_array_sized_new (len);
-				g_byte_array_append (ssid, (const guint8 *) curr->data, len);
+				ssid = g_bytes_new (curr->data, len);
 				g_object_set (wireless_setting, NM_SETTING_WIRELESS_SSID, ssid, NULL);
-				g_byte_array_free (ssid, TRUE);
+				g_bytes_unref (ssid);
 				nm_log_info (LOGD_SETTINGS, "setting wireless ssid = %d", len);
+			} else if(newkey && !strcmp("mode", newkey)) {
+				if (!g_ascii_strcasecmp (curr->data, "Managed") || !g_ascii_strcasecmp (curr->data, "Auto"))
+					g_object_set (wireless_setting, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_INFRA, NULL);
+				else if (!g_ascii_strcasecmp (curr->data, "Ad-Hoc"))
+					g_object_set (wireless_setting, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_ADHOC, NULL);
+				else if (!g_ascii_strcasecmp (curr->data, "Master"))
+					g_object_set (wireless_setting, NM_SETTING_WIRELESS_MODE, NM_SETTING_WIRELESS_MODE_AP, NULL);
+				else
+					nm_log_warn (LOGD_SETTINGS, "Invalid mode '%s' (not 'Ad-Hoc', 'Ap', 'Managed', or 'Auto')", curr->data);
 			} else {
 				g_object_set(wireless_setting,
 					   newkey, curr->data,
@@ -130,13 +140,12 @@ update_wireless_setting_from_if_block(NMConnection *connection,
 			const gchar* newkey = map_by_mapping(mapping, curr->key+wpa_l);
 
 			if(newkey && !strcmp("ssid", newkey)) {
-				GByteArray *ssid;
+				GBytes *ssid;
 				gint len = strlen(curr->data);
 
-				ssid = g_byte_array_sized_new (len);
-				g_byte_array_append (ssid, (const guint8 *) curr->data, len);
+				ssid = g_bytes_new (curr->data, len);
 				g_object_set (wireless_setting, NM_SETTING_WIRELESS_SSID, ssid, NULL);
-				g_byte_array_free (ssid, TRUE);
+				g_bytes_unref (ssid);
 				nm_log_info (LOGD_SETTINGS, "setting wpa ssid = %d", len);
 			} else if(newkey) {
 
@@ -318,11 +327,9 @@ update_wireless_security_setting_from_if_block(NMConnection *connection,
 			IfupdownStrDupeFunc dupe_func = map_by_mapping (dupe_mapping, curr->key+wireless_l);
 			IfupdownStrToTypeFunc type_map_func = map_by_mapping (type_mapping, curr->key+wireless_l);
 			GFreeFunc free_func = map_by_mapping (free_type_mapping, curr->key+wireless_l);
-			if(!newkey || !dupe_func) {
-				nm_log_warn (LOGD_SETTINGS, "no (wireless) mapping found for key: %s",
-				             curr->key);
+			if(!newkey || !dupe_func)
 				goto next;
-			}
+
 			property_value = (*dupe_func) (curr->data, connection);
 			nm_log_info (LOGD_SETTINGS, "setting wireless security key: %s=%s",
 			             newkey, property_value);
@@ -353,15 +360,15 @@ update_wireless_security_setting_from_if_block(NMConnection *connection,
 			IfupdownStrDupeFunc dupe_func = map_by_mapping (dupe_mapping, curr->key+wpa_l);
 			IfupdownStrToTypeFunc type_map_func = map_by_mapping (type_mapping, curr->key+wpa_l);
 			GFreeFunc free_func = map_by_mapping (free_type_mapping, curr->key+wpa_l);
-			if(!newkey || !dupe_func) {
+			if(!newkey || !dupe_func)
 				goto next;
-			}
+
 			property_value = (*dupe_func) (curr->data, connection);
 			nm_log_info (LOGD_SETTINGS, "setting wpa security key: %s=%s",
 			             newkey,
 #ifdef DEBUG_SECRETS
 			             property_value
-#else // DEBUG_SECRETS
+#else /* DEBUG_SECRETS */
 			             !strcmp("key", newkey) ||
 			             !strcmp("leap-password", newkey) ||
 			             !strcmp("pin", newkey) ||
@@ -372,7 +379,7 @@ update_wireless_security_setting_from_if_block(NMConnection *connection,
 			             !strcmp("wep-key3", newkey) ||
 			             NULL ?
 			             "<omitted>" : property_value
-#endif // DEBUG_SECRETS
+#endif /* DEBUG_SECRETS */
 			             );
 
 			if (type_map_func) {
