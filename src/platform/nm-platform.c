@@ -236,37 +236,6 @@ nm_platform_check_support_user_ipv6ll (NMPlatform *self)
 	return !!supported;
 }
 
-int
-nm_platform_netns_create(NMPlatform *self, const char *name, gboolean isroot)
-{
-	_CHECK_SELF (self, klass, -1);
-
-	if (!klass->netns_create)
-		return FALSE;
-
-	return klass->netns_create (self, name, isroot);
-}
-
-void
-nm_platform_netns_destroy(NMPlatform *self, const char *name)
-{
-	_CHECK_SELF_VOID (self, klass);
-
-	if (klass->netns_destroy)
-		klass->netns_destroy (self, name);
-}
-
-gboolean
-nm_platform_netns_activate(NMPlatform *self, int netns_id)
-{
-	_CHECK_SELF (self, klass, FALSE);
-
-	if (!klass->netns_activate)
-		return FALSE;
-
-	return klass->netns_activate (self, netns_id);
-}
-
 /**
  * nm_platform_process_events:
  * @self: platform instance
@@ -4204,6 +4173,14 @@ const NMPlatformVTableRoute nm_platform_vtable_route_v6 = {
 	.route_delete_default           = _vtr_v6_route_delete_default,
 	.metric_normalize               = nm_utils_ip6_route_metric_normalize,
 };
+
+/******************************************************************/
+
+void
+nm_platform_stop (NMPlatform *self)
+{
+	// TODO: Remove and cleanup netns!
+}
 
 /******************************************************************/
 

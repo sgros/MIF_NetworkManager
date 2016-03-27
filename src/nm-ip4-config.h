@@ -23,7 +23,6 @@
 
 #include "nm-exported-object.h"
 #include "nm-setting-ip4-config.h"
-#include "nm-netns.h"
 
 #define NM_TYPE_IP4_CONFIG (nm_ip4_config_get_type ())
 #define NM_IP4_CONFIG(obj) (G_TYPE_CHECK_INSTANCE_CAST ((obj), NM_TYPE_IP4_CONFIG, NMIP4Config))

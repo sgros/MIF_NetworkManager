@@ -79,7 +79,7 @@ nm_netns_new (const char *netns_name)
 	netns = g_object_new (NM_TYPE_NETNS, NULL);
 
 	priv = NM_NETNS_GET_PRIVATE (netns);
-	priv->route_manager = nm_route_manager_new();
+	priv->route_manager = nm_route_manager_new(nm_platform_get());
 
 	return netns;
 }

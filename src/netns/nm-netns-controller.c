@@ -101,60 +101,12 @@ find_netns_key_by_name(NMNetnsController *self, const char *netnsname)
 
 /******************************************************************/
 
-void
-nm_netns_controller_activate_root_netns(void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-       	nm_log_dbg (LOGD_NETNS, "Activating root network namespace %s (net_id=%d)",
-		    nm_netns_get_name(priv->root_ns), nm_netns_get_id(priv->root_ns));
-
-	g_assert(priv->root_ns);
-
-	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(priv->root_ns));
-
-	if (priv->active_ns)
-		g_object_unref(priv->active_ns);
-
-	priv->active_ns = priv->root_ns;
-	g_object_ref(priv->root_ns);
-}
-
-void
-nm_netns_controller_activate_netns(NMNetns *netns)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-       	nm_log_dbg (LOGD_NETNS, "Activating network namespace %s (net_id=%d)",
-		    nm_netns_get_name(netns), nm_netns_get_id(netns));
-
-	g_assert(netns);
-
-	nm_platform_netns_activate(NM_PLATFORM_GET, nm_netns_get_id(netns));
-
-	if (priv->active_ns)
-		g_object_unref(priv->active_ns);
-
-	priv->active_ns = netns;
-	g_object_ref(netns);
-}
-
-/******************************************************************/
-
 NMNetns *
 nm_netns_controller_get_root_netns (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 
 	return priv->root_ns;
-}
-
-NMNetns *
-nm_netns_controller_get_active_netns (void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-	return priv->active_ns;
 }
 
 NMNetns *
@@ -181,35 +133,11 @@ nm_netns_controller_find_netns_by_name(const char *netns_name)
 }
 
 NMPlatform *
-nm_netns_controller_get_active_platform (void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-	return nm_netns_get_platform(priv->active_ns);
-}
-
-NMPlatform *
 nm_netns_controller_get_root_platform (NMNetnsController *self)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (self);
 
 	return nm_netns_get_platform(priv->root_ns);
-}
-
-NMDefaultRouteManager *
-nm_netns_controller_get_default_route_manager (void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-	return nm_netns_get_default_route_manager(priv->active_ns);
-}
-
-NMRouteManager *
-nm_netns_controller_get_route_manager (void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-	return nm_netns_get_route_manager(priv->active_ns);
 }
 
 /******************************************************************/
@@ -240,45 +168,22 @@ create_new_namespace (NMNetnsController *self, const char *netnsname,
 	NMNetns *netns;
 
 	const char *path;
-	int netns_id;
 
-	netns = nm_netns_new(netnsname);
-
-	/*
-         * When creating new namespace it isn't important which platform
-         * module we are using, so use the main one.
-         */
-	if ((netns_id = nm_platform_netns_create(NM_PLATFORM_GET, netnsname, isroot)) == -1) {
-        	nm_log_err (LOGD_NETNS, "error creating namespace %s (root=%s)",
-			    netnsname, isroot ? "yes" : "no");
-		g_object_unref(netns);
-		return NULL;
-	}
-
-	nm_netns_set_id(netns, netns_id);
+	netns = nm_netns_new (netnsname);
 
 	if (isroot) {
-		nm_netns_set_platform(netns, NM_PLATFORM_GET);
 		priv->root_ns = netns;
-		g_object_ref(netns);
-	} else {
-		/* Instantiate a new platform layer for the created network namespace */
-		nm_netns_set_platform(netns, nm_linux_platform_new());
+		g_object_ref (netns);
 	}
 
-	nm_netns_controller_activate_netns(netns);
-
-	if (!nm_netns_setup(netns, isroot)) {
+	if (!nm_netns_setup (netns, isroot)) {
         	nm_log_dbg (LOGD_NETNS, "error setting up namespace %s ", netnsname);
-		g_object_unref(netns);
-		nm_netns_controller_activate_root_netns();
+		g_object_unref (netns);
 		return NULL;
 	}
 
-	nm_netns_controller_activate_root_netns();
-
-	path = nm_netns_export(netns);
-	g_hash_table_insert(priv->network_namespaces, (gpointer)path, netns);
+	path = nm_netns_export (netns);
+	g_hash_table_insert (priv->network_namespaces, (gpointer)path, netns);
 
 	/* Emit D-Bus signals */
 	g_signal_emit (self, signals[NETNS_ADDED], 0, netns);
@@ -422,7 +327,7 @@ nm_netns_controller_setup (void)
 	                        "NMNetnsController", singleton_instance,
 	                        G_OBJECT_TYPE_NAME (singleton_instance));
 
-	return create_new_namespace(singleton_instance, NETNS_ROOT_NAME, TRUE) ? TRUE : FALSE;
+	return create_new_namespace (singleton_instance, NETNS_ROOT_NAME, TRUE) ? TRUE : FALSE;
 }
 
 NMNetnsController *

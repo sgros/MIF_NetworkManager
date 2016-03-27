@@ -37,6 +37,7 @@
 #include "nm-device.h"
 #include "nm-device-generic.h"
 #include "nm-platform.h"
+#include "nm-linux-platform.h"
 #include "nm-device-factory.h"
 #include "nm-netns.h"
 #include "nm-netns-controller.h"
@@ -179,6 +180,11 @@ typedef struct {
 	GSList *devices_change_list;
 
 	/*
+	 * Route manager instance for the namespace
+	 */
+	NMRouteManager *route_manager;
+
+	/*
 	 * Default route manager instance for the namespace
 	 */
 	NMDefaultRouteManager *default_route_manager;
@@ -187,11 +193,6 @@ typedef struct {
 	 * Configuration singleton object
 	 */
 	NMConfig *config;
-
-	/*
-	 * Route manager instance for the namespace
-	 */
-	NMRouteManager *route_manager;
 
 	/*
 	 * ???
@@ -205,6 +206,8 @@ typedef struct {
 	NMActiveConnection *primary_connection;
 	NMActiveConnection *activating_connection;
 	NMMetered metered;
+
+	GSList *auth_chains;
 
 #if 0
 	NMPolicy *policy;
@@ -399,22 +402,6 @@ nm_netns_get_name(NMNetns *self)
 }
 
 void
-nm_netns_set_id(NMNetns *self, int netns_id)
-{
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
-
-	priv->fd = netns_id;
-}
-
-int
-nm_netns_get_id(NMNetns *self)
-{
-	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
-
-	return priv->fd;
-}
-
-void
 nm_netns_set_platform(NMNetns *self, NMPlatform *platform)
 {
 	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
@@ -533,6 +520,7 @@ nm_netns_take_device(NMNetns *self,
 	 */
 	dc = _device_change_callback_add(self, nm_device_get_ifindex(device), callback, user_data);
 
+#if 0
 	/*
 	 * Initiate change of network namespace for device
 	 */
@@ -553,11 +541,36 @@ nm_netns_take_device(NMNetns *self,
 
 		return FALSE;
 	}
+#endif
 
 	return TRUE;
 }
 
+const GSList *
+nm_netns_get_active_connections (NMNetns *netns)
+{
+	return NM_NETNS_GET_PRIVATE (netns)->active_connections;
+}
+
 /**************************************************************/
+
+NMActiveConnection *
+nm_netns_active_connection_get_by_path (NMNetns *netns, const char *path)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (netns);
+	GSList *iter;
+
+	g_return_val_if_fail (netns != NULL, NULL);
+	g_return_val_if_fail (path != NULL, NULL);
+
+	for (iter = priv->active_connections; iter; iter = g_slist_next (iter)) {
+		NMActiveConnection *candidate = iter->data;
+
+		if (g_strcmp0 (path, nm_exported_object_get_path (NM_EXPORTED_OBJECT (candidate))) == 0)
+			return candidate;
+	}
+	return NULL;
+}
 
 NMDevice *
 nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex)
@@ -1010,8 +1023,13 @@ nm_netns_setup(NMNetns *self, gboolean isroot)
 	 * anything about it.
 	 */
 
-	priv->default_route_manager = nm_default_route_manager_new();
-	priv->route_manager = nm_route_manager_new();
+	if (!isroot)
+		priv->platform = nm_linux_platform_new ();
+	else
+		priv->platform = nm_platform_get();
+
+	priv->default_route_manager = nm_default_route_manager_new (priv->platform);
+	priv->route_manager = nm_route_manager_new (priv->platform);
 
 	priv->isroot = isroot;
 
@@ -1060,7 +1078,7 @@ nm_netns_stop(NMNetns *self)
 	while (priv->devices)
 		remove_device (self, NM_DEVICE (priv->devices->data), TRUE, TRUE);
 
-	nm_platform_netns_destroy(priv->platform, priv->name);
+	nm_platform_stop (priv->platform);
 
 	/*
 	 * TODO/BUG: Maybe this should go to dispose method?
@@ -2630,16 +2648,20 @@ impl_netns_activate_connection (NMNetns *self,
 	if (g_strcmp0 (device_path, "/") == 0)
 		device_path = NULL;
 
-        /* If the connection path is given and valid, that connection is activated.
+	/* If the connection path is given and valid, that connection is activated.
 	 * Otherwise the "best" connection for the device is chosen and activated,
 	 * regardless of whether that connection is autoconnect-enabled or not
 	 * (since this is an explicit request, not an auto-activation request).
 	 */
-	if (!connection_path) {
-		GPtrArray *available;
-		guint64 best_timestamp = 0;
-		guint i;
-
+	if (connection_path) {
+		connection = nm_settings_get_connection_by_path (nm_settings_get(), connection_path);
+		if (!connection) {
+			error = g_error_new_literal (NM_MANAGER_ERROR,
+			                             NM_MANAGER_ERROR_UNKNOWN_CONNECTION,
+			                             "Connection could not be found.");
+			goto error;
+		}
+	} else {
 		/* If no connection is given, find a suitable connection for the given device path */
 		if (!device_path) {
 			error = g_error_new_literal (NM_MANAGER_ERROR, NM_MANAGER_ERROR_UNKNOWN_DEVICE,
@@ -2648,42 +2670,15 @@ impl_netns_activate_connection (NMNetns *self,
 		}
 		device = nm_netns_get_device_by_path (self, device_path);
 		if (!device) {
-			error = g_error_new (NM_NETNS_ERROR, NM_NETNS_ERROR_UNKNOWN_DEVICE,
+			error = g_error_new (NM_MANAGER_ERROR, NM_MANAGER_ERROR_UNKNOWN_DEVICE,
 			                     "Cannot activate unknown device %s", device_path);
 			goto error;
 		}
 
-		available = nm_device_get_available_connections (device, specific_object_path);
-		for (i = 0; available && i < available->len; i++) {
-			NMSettingsConnection *candidate = g_ptr_array_index (available, i);
-			guint64 candidate_timestamp = 0;
-
-			nm_settings_connection_get_timestamp (candidate, &candidate_timestamp);
-			if (!connection_path || (candidate_timestamp > best_timestamp)) {
-				connection_path = nm_connection_get_path (NM_CONNECTION (candidate));
-				best_timestamp = candidate_timestamp;
-			}
-		}
-
-		if (available)
-			g_ptr_array_free (available, TRUE);
-
-		if (!connection_path) {
-			error = g_error_new_literal (NM_NETNS_ERROR,
-			                             NM_NETNS_ERROR_UNKNOWN_CONNECTION,
-			                             "The device has no connections available.");
+		connection = nm_device_get_best_connection (device, specific_object_path, &error);
+		if (!connection)
 			goto error;
-		}
-	}
-
-	g_assert (connection_path);
-	connection = nm_settings_get_connection_by_path (nm_settings_get(), connection_path);
-	if (!connection) {
-		error = g_error_new_literal (NM_NETNS_ERROR,
-		                             NM_NETNS_ERROR_UNKNOWN_CONNECTION,
-		                             "Connection could not be found.");
-		goto error;
-	}
+        }
 
 	subject = validate_activation_request (self,
 	                                       context,
@@ -2720,6 +2715,172 @@ error:
 	g_dbus_method_invocation_take_error (context, error);
 }
 
+/******************************************************************/
+
+gboolean
+nm_netns_deactivate_connection (NMNetns *netns,
+                                const char *connection_path,
+                                NMDeviceStateReason reason,
+                                GError **error)
+{
+	NMActiveConnection *active;
+	gboolean success = FALSE;
+
+	active = nm_netns_active_connection_get_by_path (netns, connection_path);
+	if (!active) {
+		g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_CONNECTION_NOT_ACTIVE,
+		                     "The connection was not active.");
+		return FALSE;
+	}
+
+	if (NM_IS_VPN_CONNECTION (active)) {
+		NMVpnConnectionStateReason vpn_reason = NM_VPN_CONNECTION_STATE_REASON_USER_DISCONNECTED;
+
+		if (reason == NM_DEVICE_STATE_REASON_CONNECTION_REMOVED)
+			vpn_reason = NM_VPN_CONNECTION_STATE_REASON_CONNECTION_REMOVED;
+		if (nm_vpn_connection_deactivate (NM_VPN_CONNECTION (active), vpn_reason, FALSE))
+			success = TRUE;
+		else
+			g_set_error_literal (error, NM_NETNS_ERROR, NM_NETNS_ERROR_CONNECTION_NOT_ACTIVE,
+			                     "The VPN connection was not active.");
+	} else {
+		g_assert (NM_IS_ACT_REQUEST (active));
+		nm_device_state_changed (nm_active_connection_get_device (active),
+		                         NM_DEVICE_STATE_DEACTIVATING,
+		                         reason);
+		success = TRUE;
+	}
+
+	if (success)
+		g_object_notify (G_OBJECT (netns), NM_NETNS_ACTIVE_CONNECTIONS);
+
+	return success;
+}
+
+static void
+deactivate_net_auth_done_cb (NMAuthChain *chain,
+                             GError *auth_error,
+                             GDBusMethodInvocation *context,
+                             gpointer user_data)
+{
+	NMNetns *self = NM_NETNS (user_data);
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	GError *error = NULL;
+	NMAuthCallResult result;
+	NMActiveConnection *active;
+	char *path;
+
+	g_assert (context);
+
+	priv->auth_chains = g_slist_remove (priv->auth_chains, chain);
+
+	path = nm_auth_chain_get_data (chain, "path");
+	result = nm_auth_chain_get_result (chain, NM_AUTH_PERMISSION_NETWORK_CONTROL);
+
+	if (auth_error) {
+		_LOGD (LOGD_CORE, "Disconnect request failed: %s", auth_error->message);
+		error = g_error_new (NM_NETNS_ERROR,
+		                     NM_NETNS_ERROR_PERMISSION_DENIED,
+		                     "Deactivate request failed: %s",
+		                     auth_error->message);
+	} else if (result != NM_AUTH_CALL_RESULT_YES) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_PERMISSION_DENIED,
+		                             "Not authorized to deactivate connections");
+	} else {
+		/* success; deactivation allowed */
+		if (!nm_netns_deactivate_connection (self,
+		                                     path,
+		                                     NM_DEVICE_STATE_REASON_USER_REQUESTED,
+		                                     &error))
+			nm_assert (error);
+	}
+
+	active = nm_netns_active_connection_get_by_path (self, path);
+	if (active) {
+		nm_audit_log_connection_op (NM_AUDIT_OP_CONN_DEACTIVATE,
+		                            nm_active_connection_get_settings_connection (active),
+		                            !error,
+		                            nm_auth_chain_get_subject (chain),
+		                            error ? error->message : NULL);
+	}
+
+	if (error)
+		g_dbus_method_invocation_take_error (context, error);
+	else
+		g_dbus_method_invocation_return_value (context, NULL);
+
+	nm_auth_chain_unref (chain);
+}
+
+static void
+impl_netns_deactivate_connection (NMNetns *self,
+                                  GDBusMethodInvocation *context,
+                                  const char *active_path)
+{
+	NMNetnsPrivate *priv = NM_NETNS_GET_PRIVATE (self);
+	NMActiveConnection *ac;
+	NMSettingsConnection *connection = NULL;
+	GError *error = NULL;
+	NMAuthSubject *subject = NULL;
+	NMAuthChain *chain;
+	char *error_desc = NULL;
+
+	/* Find the connection by its object path */
+	ac = nm_netns_active_connection_get_by_path (self, active_path);
+	if (ac)
+		connection = nm_active_connection_get_settings_connection (ac);
+
+	if (!connection) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_CONNECTION_NOT_ACTIVE,
+		                             "The connection was not active.");
+		goto done;
+	}
+
+	/* Validate the caller */
+	subject = nm_auth_subject_new_unix_process_from_context (context);
+	if (!subject) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_PERMISSION_DENIED,
+		                             "Failed to get request UID.");
+		goto done;
+	}
+
+	/* Ensure the subject has permissions for this connection */
+	if (!nm_auth_is_subject_in_acl (NM_CONNECTION (connection),
+	                                subject,
+	                                &error_desc)) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_PERMISSION_DENIED,
+		                             error_desc);
+		g_free (error_desc);
+		goto done;
+	}
+
+	/* Validate the user request */
+	chain = nm_auth_chain_new_subject (subject, context, deactivate_net_auth_done_cb, self);
+	if (!chain) {
+		error = g_error_new_literal (NM_NETNS_ERROR,
+		                             NM_NETNS_ERROR_PERMISSION_DENIED,
+		                             "Unable to authenticate request.");
+		goto done;
+	}
+
+	priv->auth_chains = g_slist_append (priv->auth_chains, chain);
+	nm_auth_chain_set_data (chain, "path", g_strdup (active_path), g_free);
+	nm_auth_chain_add_call (chain, NM_AUTH_PERMISSION_NETWORK_CONTROL, TRUE);
+
+done:
+	if (error) {
+		if (connection) {
+			nm_audit_log_connection_op (NM_AUDIT_OP_CONN_DEACTIVATE, connection, FALSE,
+			                            subject, error->message);
+		}
+		g_dbus_method_invocation_take_error (context, error);
+	}
+	g_clear_object (&subject);
+}
 
 /******************************************************************/
 
@@ -3374,11 +3535,12 @@ nm_netns_class_init (NMNetnsClass *klass)
 		              G_TYPE_NONE, 1, NM_TYPE_ACTIVE_CONNECTION);
 
 	nm_exported_object_class_add_interface (NM_EXPORTED_OBJECT_CLASS (klass),
-						NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,
-						"GetDevices", impl_netns_get_devices,
-						"GetAllDevices", impl_netns_get_all_devices,
-						"TakeDevice", impl_netns_take_device,
+	                                        NMDBUS_TYPE_NET_NS_INSTANCE_SKELETON,
+	                                        "GetDevices", impl_netns_get_devices,
+	                                        "GetAllDevices", impl_netns_get_all_devices,
+	                                        "TakeDevice", impl_netns_take_device,
 	                                        "ActivateConnection", impl_netns_activate_connection,
-						NULL);
+	                                        "DeactivateConnection", impl_netns_deactivate_connection,
+	                                        NULL);
 }
 

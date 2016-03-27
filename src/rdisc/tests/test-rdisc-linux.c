@@ -69,7 +69,7 @@ main (int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	rdisc = nm_lndp_rdisc_new (nm_netns_controller_get_root_netns (),
+	rdisc = nm_lndp_rdisc_new (nm_netns_get_platform (nm_netns_controller_get_root_netns ()),
 	                           ifindex,
 	                           ifname,
 	                           "8ce666e8-d34d-4fb1-b858-f15a7al28086",

@@ -66,6 +66,9 @@
 #define NM_NETNS_ACTIVE_CONNECTION_ADDED        "netns-active-connection-added"
 #define NM_NETNS_ACTIVE_CONNECTION_REMOVED      "netns-active-connection-removed"
 
+/* Not exported */
+#define NM_NETNS_HOSTNAME "hostname"
+
 struct _NMNetns {
 	NMExportedObject parent_instance;
 };
@@ -83,6 +86,8 @@ const char *nm_netns_export (NMNetns *self);
 NMDevice *nm_netns_get_device_by_ifindex (NMNetns *self, int ifindex);
 NMDevice *nm_netns_get_device_by_path (NMNetns *self, const char *device_path);
 
+NMActiveConnection *nm_netns_active_connection_get_by_path (NMNetns *netns, const char *path);
+
 char *nm_netns_get_connection_iface (NMNetns *self, NMConnection *connection, NMDevice **out_parent, GError **error);
 
 GSList *nm_netns_get_activatable_connections (NMNetns *self);
@@ -93,11 +98,13 @@ NMActiveConnection *nm_netns_activate_connection (NMNetns *self,
                                                   NMAuthSubject *subject,
                                                   GError **error);
 
+gboolean nm_netns_deactivate_connection (NMNetns *netns,
+                                         const char *connection_path,
+                                         NMDeviceStateReason reason,
+                                         GError **error);
+
 void nm_netns_set_name (NMNetns *netns, const char *name);
 const char *nm_netns_get_name (NMNetns *netns);
-
-void nm_netns_set_id (NMNetns *self, int netns_id);
-int nm_netns_get_id (NMNetns *self);
 
 void nm_netns_set_default_route_manager (NMNetns *self, NMDefaultRouteManager *default_route_manager);
 NMDefaultRouteManager *nm_netns_get_default_route_manager (NMNetns *self);
@@ -112,6 +119,8 @@ void nm_netns_remove_device (NMNetns *self, NMDevice *device);
 void nm_netns_add_device (NMNetns *self, NMDevice *device);
 
 gboolean nm_netns_take_device (NMNetns *self, NMDevice *device, int timeout, void (*callback)(gpointer user_data, gboolean timeout), gpointer user_data);
+
+const GSList *nm_netns_get_active_connections (NMNetns *netns);
 
 void nm_netns_device_change_callback_activate_and_remove(NMNetns *self, NMDevice *device);
 

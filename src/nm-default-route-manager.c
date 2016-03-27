@@ -27,8 +27,6 @@
 #include "nm-device.h"
 #include "nm-vpn-connection.h"
 #include "nm-platform.h"
-#include "nm-netns.h"
-#include "nm-netns-controller.h"
 #include "nm-manager.h"
 #include "nm-ip4-config.h"
 #include "nm-ip6-config.h"
@@ -53,7 +51,7 @@ typedef struct {
 	 * is already disposing. */
 	gboolean disposed;
 
-	NMNetns *netns;
+	NMPlatform *platform;
 } NMDefaultRouteManagerPrivate;
 
 #define NM_DEFAULT_ROUTE_MANAGER_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), NM_TYPE_DEFAULT_ROUTE_MANAGER, NMDefaultRouteManagerPrivate))
@@ -87,10 +85,12 @@ NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get,
             \
             _nm_log (__level, __domain, 0, \
                      "%s: " _NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
-                     nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
-                                     _NMLOG2_PREFIX_NAME, \
-                                     __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
-                                     self) \
+                     self != singleton_instance \
+                        ? nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
+                                          _NMLOG2_PREFIX_NAME, \
+                                          __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
+                                          self) \
+                        : _NMLOG2_PREFIX_NAME \
                      _NM_UTILS_MACRO_REST(__VA_ARGS__)); \
         } \
     } G_STMT_END
@@ -111,10 +111,12 @@ NM_DEFINE_SINGLETON_GETTER (NMDefaultRouteManager, nm_default_route_manager_get,
             \
             _nm_log (__level, __domain, 0, \
                      "%s: entry[%u/%s:%p:%s:%c:%csync]: "_NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
-                     nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
-                                     _NMLOG2_PREFIX_NAME, \
-                                     __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
-                                     self), \
+                     self != singleton_instance \
+                        ? nm_sprintf_buf (__prefix_buf, "%s%c[%p]", \
+                                          _NMLOG2_PREFIX_NAME, \
+                                          __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'), \
+                                          self) \
+                        : _NMLOG2_PREFIX_NAME, \
                      __entry_idx, \
                      NM_IS_DEVICE (__entry->source.pointer) ? "dev" : "vpn", \
                      __entry->source.pointer, \
@@ -321,7 +323,7 @@ _platform_route_sync_flush (const VTableIP *vtable, NMDefaultRouteManager *self,
 	gboolean changed = FALSE;
 
 	/* prune all other default routes from this device. */
-	routes = vtable->vt->route_get_all (nm_netns_get_platform(priv->netns), 0, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT);
+	routes = vtable->vt->route_get_all (priv->platform, 0, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT);
 
 	for (i = 0; i < routes->len; i++) {
 		const NMPlatformIPRoute *route;
@@ -1362,8 +1364,6 @@ _platform_changed_cb (NMPlatform *platform,
                       NMPlatformSignalChangeType change_type,
                       NMDefaultRouteManager *self)
 {
-	g_assert(NM_IS_PLATFORM(platform));
-
 	switch (obj_type) {
 	case NMP_OBJECT_TYPE_IP4_ADDRESS:
 		_platform_ipx_route_changed_cb (&vtable_ip4, self, NULL);
@@ -1380,14 +1380,6 @@ _platform_changed_cb (NMPlatform *platform,
 	default:
 		g_return_if_reached ();
 	}
-}
-
-/***********************************************************************************/
-
-NMDefaultRouteManager *
-nm_default_route_manager_new(void)
-{
-	return g_object_new(NM_TYPE_DEFAULT_ROUTE_MANAGER, NULL);
 }
 
 /***********************************************************************************/
@@ -1449,9 +1441,9 @@ dispose (GObject *object)
 
 	priv->disposed = TRUE;
 
-	if (priv->netns) {
-		g_signal_handlers_disconnect_by_func (nm_netns_get_platform(priv->netns), G_CALLBACK (_platform_changed_cb), self);
-		g_clear_object (&priv->netns);
+	if (priv->platform) {
+		g_signal_handlers_disconnect_by_func (priv->platform, G_CALLBACK (_platform_changed_cb), self);
+		g_clear_object (&priv->platform);
 	}
 
 	_resync_idle_cancel (self);

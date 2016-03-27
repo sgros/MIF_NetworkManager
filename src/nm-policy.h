@@ -47,7 +47,7 @@ typedef struct {
 
 GType nm_policy_get_type (void);
 
-NMPolicy *nm_policy_new (NMManager *manager, NMSettings *settings);
+NMPolicy *nm_policy_new (NMNetns *netns, NMSettings *settings);
 
 NMDevice *nm_policy_get_default_ip4_device (NMPolicy *policy);
 NMDevice *nm_policy_get_default_ip6_device (NMPolicy *policy);

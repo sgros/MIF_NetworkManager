@@ -25,9 +25,6 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/mount.h>
 #include <fcntl.h>
 #include <dlfcn.h>
 #include <arpa/inet.h>
@@ -46,7 +43,6 @@
 #include <netlink/route/addr.h>
 #include <netlink/route/route.h>
 #include <gudev/gudev.h>
-#include <sched.h>
 
 #include "nm-utils.h"
 #include "nm-core-internal.h"
@@ -115,11 +111,6 @@
 #define IP6_FLOWINFO_TCLASS_MASK        0x0FF00000
 #define IP6_FLOWINFO_TCLASS_SHIFT       20
 #define IP6_FLOWINFO_FLOWLABEL_MASK     0x000FFFFF
-
-/* network namespace related constants */
-#define PATHMAX				4096
-#define NETNS_PATH			"/var/run/netns/"		/* must end with / */
-#define SELF_NET_PATH			"/proc/self/ns/net"
 
 /*********************************************************************************************/
 
@@ -2432,8 +2423,9 @@ NMPlatform *
 nm_linux_platform_new (void)
 {
 	return g_object_new (NM_TYPE_LINUX_PLATFORM,
-	              NM_PLATFORM_REGISTER_SINGLETON, FALSE,
-	              NULL);
+	                     NM_PLATFORM_NETNS_SUPPORT, TRUE,
+	                     NM_PLATFORM_REGISTER_SINGLETON, FALSE,
+	                     NULL);
 }
 
 /******************************************************************/
@@ -2667,92 +2659,6 @@ static void
 process_events (NMPlatform *platform)
 {
 	delayed_action_handle_all (platform, TRUE);
-}
-
-/******************************************************************/
-
-static int
-netns_create(NMPlatform *platform, const char *name, gboolean isroot)
-{
-	char filename[PATHMAX];
-	int netns_id;
-
-	strcpy(filename, NETNS_PATH);
-	strncat(filename, name, PATHMAX);
-
-	/*
-	 * Create target directory first. Note that all subdirectories,
-	 * except the last one, must already exist!
-	 */
-	if (mkdir (NETNS_PATH, 0) == -1) {
-		if (errno != EEXIST) {
-			nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'",
-			            filename, strerror(errno));
-			return -1;
-		}
-	}
-
-	/*
-	 * Create a node in /var/run/netns 
-	 */
-	if ((netns_id = creat(filename, S_IRUSR | S_IRGRP | S_IROTH)) == -1) {
-		nm_log_err (LOGD_NETNS, "Failed to create %s with error '%s'",
-		            filename, strerror(errno));
-		return -1;
-	}
-
-	close(netns_id);
-	netns_id = -1;
-
-	if (!isroot) {
-		if (unshare(CLONE_NEWNET) < 0) {
-			nm_log_err (LOGD_NETNS, "Failed to unshare network namespace with error '%s'", strerror(errno));
-			unlink(filename);
-			return -1;
-		}
-	}
-
-	if (mount(SELF_NET_PATH, filename, "none", MS_BIND, NULL) < 0) {
-		nm_log_err (LOGD_NETNS, "Failed to mount %s to %s with error '%s'",
-			    SELF_NET_PATH, filename, strerror(errno));
-		unlink(filename);
-		return -1;
-	}
-
-	if ((netns_id = open(filename, O_RDONLY)) == -1) {
-		nm_log_err (LOGD_NETNS, "Failed to open %s with error '%s'", filename, strerror(errno));
-		umount2(filename, MNT_DETACH);
-		unlink(filename);
-		return -1;
-	}
-
-	return netns_id;
-}
-
-static void
-netns_destroy(NMPlatform *platform, const char *name)
-{
-	char filename[PATHMAX];
-
-	strcpy(filename, NETNS_PATH);
-	strncat(filename, name, PATHMAX);
-
-	if (umount2(filename, MNT_DETACH) == 0) {
-		if (unlink(filename) < 0)
-			nm_log_err (LOGD_NETNS, "Failed to unlink %s with error '%s'", filename, strerror(errno));
-	} else
-		nm_log_err (LOGD_NETNS, "Failed to unmount2 %s with error '%s'", filename, strerror(errno));
-}
-
-static gboolean
-netns_activate(NMPlatform *platform, int netns_id)
-{
-	if (setns(netns_id, CLONE_NEWNET) < 0) {
-		nm_log_err (LOGD_NETNS, "Failed to set network namespace fd %d with error '%s'", netns_id, strerror(errno));
-		return FALSE;
-	}
-
-	return TRUE;
 }
 
 /******************************************************************/
@@ -4173,7 +4079,6 @@ link_set_netns (NMPlatform *platform,
 		return FALSE;
 
 	NLA_PUT (nlmsg, IFLA_NET_NS_FD, 4, &netns_fd);
-
 	return do_change_link (platform, ifindex, nlmsg) == NM_PLATFORM_ERROR_SUCCESS;
 
 nla_put_failure:
@@ -6369,10 +6274,6 @@ nm_linux_platform_class_init (NMLinuxPlatformClass *klass)
 
 	platform_class->check_support_kernel_extended_ifa_flags = check_support_kernel_extended_ifa_flags;
 	platform_class->check_support_user_ipv6ll = check_support_user_ipv6ll;
-
-	platform_class->netns_create = netns_create;
-	platform_class->netns_destroy = netns_destroy;
-	platform_class->netns_activate = netns_activate;
 
 	platform_class->process_events = process_events;
 }

@@ -24,8 +24,6 @@
 
 #include "nm-route-manager.h"
 #include "nm-platform.h"
-#include "nm-netns.h"
-#include "nm-netns-controller.h"
 #include "nmp-object.h"
 #include "nm-core-internal.h"
 #include "NetworkManagerUtils.h"
@@ -61,7 +59,7 @@ typedef struct {
 } IP4DeviceRoutePurgeEntry;
 
 typedef struct {
-	NMNetns *netns;
+	NMPlatform *platform;
 
 	RouteEntries ip4_routes;
 	RouteEntries ip6_routes;
@@ -136,7 +134,10 @@ static const VTableIP vtable_v4, vtable_v6;
             char __ch = __addr_family == AF_INET ? '4' : (__addr_family == AF_INET6 ? '6' : '-'); \
             char __prefix[30] = _NMLOG_PREFIX_NAME; \
             \
-            g_snprintf (__prefix, sizeof (__prefix), "%s%c[%p]", _NMLOG_PREFIX_NAME, __ch, (self)); \
+            if ((self) != singleton_instance) \
+                g_snprintf (__prefix, sizeof (__prefix), "%s%c[%p]", _NMLOG_PREFIX_NAME, __ch, (self)); \
+            else \
+                __prefix[NM_STRLEN (_NMLOG_PREFIX_NAME)] = __ch; \
             _nm_log ((level), (__domain), 0, \
                      "%s: " _NM_UTILS_MACRO_FIRST(__VA_ARGS__), \
                      __prefix _NM_UTILS_MACRO_REST(__VA_ARGS__)); \
@@ -450,10 +451,10 @@ _vx_route_sync (const VTableIP *vtable, NMRouteManager *self, int ifindex, const
 	gboolean ipx_routes_changed = FALSE;
 	gint64 *effective_metrics = NULL;
 
-	nm_platform_process_events (nm_netns_get_platform(priv->netns));
+	nm_platform_process_events (priv->platform);
 
 	ipx_routes = vtable->vt->is_ip4 ? &priv->ip4_routes : &priv->ip6_routes;
-	plat_routes = vtable->vt->route_get_all (nm_netns_get_platform(priv->netns), ifindex,
+	plat_routes = vtable->vt->route_get_all (priv->platform, ifindex,
 	                                         ignore_kernel_routes
 	                                             ? NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT
 	                                             : NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_RTPROT_KERNEL);
@@ -575,7 +576,7 @@ _vx_route_sync (const VTableIP *vtable, NMRouteManager *self, int ifindex, const
 				 * in platform. Delete it. */
 				_LOGt (vtable->vt->addr_family, "%3d: platform rt-rm #%u - %s", ifindex, i_plat_routes,
 				       vtable->vt->route_to_string (cur_plat_route, NULL, 0));
-				vtable->vt->route_delete (nm_netns_get_platform(priv->netns), ifindex, cur_plat_route);
+				vtable->vt->route_delete (priv->platform, ifindex, cur_plat_route);
 			}
 		}
 	}
@@ -741,7 +742,7 @@ next:
 			if (   !cur_ipx_route
 			    || route_dest_cmp_result != 0
 			    || *p_effective_metric != cur_plat_route->rx.metric)
-				vtable->vt->route_delete (nm_netns_get_platform(priv->netns), ifindex, cur_plat_route);
+				vtable->vt->route_delete (priv->platform, ifindex, cur_plat_route);
 
 			cur_plat_route = _get_next_plat_route (plat_routes_idx, FALSE, &i_plat_routes);
 		}
@@ -814,13 +815,13 @@ next:
 					gateway_routes = g_array_new (FALSE, FALSE, sizeof (guint));
 				g_array_append_val (gateway_routes, i_ipx_routes);
 			} else
-				vtable->vt->route_add (nm_netns_get_platform(priv->netns), 0, cur_ipx_route, *p_effective_metric);
+				vtable->vt->route_add (priv->platform, 0, cur_ipx_route, *p_effective_metric);
 		}
 
 		if (gateway_routes) {
 			for (i = 0; i < gateway_routes->len; i++) {
 				i_ipx_routes = g_array_index (gateway_routes, guint, i);
-				vtable->vt->route_add (nm_netns_get_platform(priv->netns), 0,
+				vtable->vt->route_add (priv->platform, 0,
 				                       ipx_routes->index->entries[i_ipx_routes],
 				                       effective_metrics[i_ipx_routes]);
 			}
@@ -871,7 +872,7 @@ next:
 			    || route_dest_cmp_result != 0
 			    || !_route_equals_ignoring_ifindex (vtable, cur_plat_route, cur_ipx_route, *p_effective_metric)) {
 
-				if (!vtable->vt->route_add (nm_netns_get_platform(priv->netns), ifindex, cur_ipx_route, *p_effective_metric)) {
+				if (!vtable->vt->route_add (priv->platform, ifindex, cur_ipx_route, *p_effective_metric)) {
 					if (cur_ipx_route->rx.source < NM_IP_CONFIG_SOURCE_USER) {
 						_LOGD (vtable->vt->addr_family,
 						       "ignore error adding IPv%c route to kernel: %s",
@@ -997,7 +998,7 @@ _ip4_device_routes_idle_cb (IP4DeviceRoutePurgeEntry *entry)
 
 	_LOGt (vtable_v4.vt->addr_family, "device-route: delete %s", nmp_object_to_string (entry->obj, NMP_OBJECT_TO_STRING_PUBLIC, NULL, 0));
 
-	nm_platform_ip4_route_delete (nm_netns_get_platform(priv->netns),
+	nm_platform_ip4_route_delete (priv->platform,
 	                              entry->obj->ip4_route.ifindex,
 	                              entry->obj->ip4_route.network,
 	                              entry->obj->ip4_route.plen,
@@ -1058,8 +1059,8 @@ _ip4_device_routes_cancel (NMRouteManager *self)
 		if (g_hash_table_size (priv->ip4_device_routes.entries) > 0)
 			return G_SOURCE_CONTINUE;
 		_LOGt (vtable_v4.vt->addr_family, "device-route: cancel");
-		if (priv->netns)
-			g_signal_handlers_disconnect_by_func (nm_netns_get_platform(priv->netns), G_CALLBACK (_ip4_device_routes_ip4_route_changed), self);
+		if (priv->platform)
+			g_signal_handlers_disconnect_by_func (priv->platform, G_CALLBACK (_ip4_device_routes_ip4_route_changed), self);
 		nm_clear_g_source (&priv->ip4_device_routes.gc_id);
 	}
 	return G_SOURCE_REMOVE;
@@ -1120,7 +1121,7 @@ nm_route_manager_ip4_route_register_device_route_purge_list (NMRouteManager *sel
 		                      entry);
 	}
 	if (priv->ip4_device_routes.gc_id == 0) {
-		g_signal_connect (nm_netns_get_platform(priv->netns), NM_PLATFORM_SIGNAL_IP4_ROUTE_CHANGED, G_CALLBACK (_ip4_device_routes_ip4_route_changed), self);
+		g_signal_connect (priv->platform, NM_PLATFORM_SIGNAL_IP4_ROUTE_CHANGED, G_CALLBACK (_ip4_device_routes_ip4_route_changed), self);
 		priv->ip4_device_routes.gc_id = g_timeout_add (IP4_DEVICE_ROUTES_GC_INTERVAL_SEC, (GSourceFunc) _ip4_device_routes_gc, self);
 	}
 }
@@ -1138,14 +1139,6 @@ static const VTableIP vtable_v6 = {
 	.route_dest_cmp                 = (int (*) (const NMPlatformIPXRoute *, const NMPlatformIPXRoute *)) _v6_route_dest_cmp,
 	.route_id_cmp                   = (int (*) (const NMPlatformIPXRoute *, const NMPlatformIPXRoute *)) _v6_route_id_cmp,
 };
-
-/*********************************************************************************************/
-
-NMRouteManager *
-nm_route_manager_new(void)
-{
-	return g_object_new(NM_TYPE_ROUTE_MANAGER, NULL);
-}
 
 /*********************************************************************************************/
 

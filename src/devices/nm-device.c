@@ -4301,7 +4301,7 @@ ip4_config_merge_and_apply (NMDevice *self,
 	 */
 
 	connection_has_default_route
-	    = nm_default_route_manager_ip4_connection_has_default_route (nm_netns_controller_get_default_route_manager (),
+	    = nm_default_route_manager_ip4_connection_has_default_route (nm_netns_get_default_route_manager (priv->netns),
 	                                                                 connection, &connection_is_never_default);
 
 	if (   !priv->v4_commit_first_time
@@ -5023,7 +5023,7 @@ ip6_config_merge_and_apply (NMDevice *self,
 	 */
 
 	connection_has_default_route
-	    = nm_default_route_manager_ip6_connection_has_default_route (nm_netns_controller_get_default_route_manager (),
+	    = nm_default_route_manager_ip6_connection_has_default_route (nm_netns_get_default_route_manager (priv->netns),
 	                                                                 connection, &connection_is_never_default);
 
 	if (   !priv->v6_commit_first_time
@@ -7744,7 +7744,7 @@ nm_device_queue_activation (NMDevice *self, NMActRequest *req)
 
 	must_queue = _carrier_wait_check_act_request_must_queue (self, req);
 
-	if (!priv->act_request && !must_queue) {
+	if (!priv->act_request && !must_queue && nm_device_is_real (self)) {
 		/* Just activate immediately */
 		if (!_device_activate (self, req))
 			g_assert_not_reached ();
@@ -7884,7 +7884,7 @@ nm_device_set_ip4_config (NMDevice *self,
 		g_clear_object (&priv->dev_ip4_config);
 	}
 
-	nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
 
 	if (has_changes) {
 		_update_ip4_address (self);
@@ -8052,7 +8052,7 @@ nm_device_set_ip6_config (NMDevice *self,
 		       nm_exported_object_get_path (NM_EXPORTED_OBJECT (old_config)));
 	}
 
-	nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
 
 	if (has_changes) {
 		if (old_config != priv->ip6_config)
@@ -9699,39 +9699,55 @@ nm_device_recheck_available_connections (NMDevice *self)
 }
 
 /**
- * nm_device_get_available_connections:
+ * nm_device_get_best_connection:
  * @self: the #NMDevice
  * @specific_object: a specific object path if any
+ * @error: reason why no connection was returned
  *
- * Returns a list of connections available to activate on the device, taking
- * into account any device-specific details given by @specific_object (like
- * WiFi access point path).
+ * Returns a connection that's most suitable for user-initiated activation
+ * of a device, optionally with a given specific object.
  *
- * Returns: caller-owned #GPtrArray of #NMConnections
+ * Returns: the #NMSettingsConnection or %NULL (setting an @error)
  */
-GPtrArray *
-nm_device_get_available_connections (NMDevice *self, const char *specific_object)
+NMSettingsConnection *
+nm_device_get_best_connection (NMDevice *self,
+                               const char *specific_object,
+                               GError **error)
 {
 	NMDevicePrivate *priv = NM_DEVICE_GET_PRIVATE (self);
+	NMSettingsConnection *connection = NULL;
+	NMSettingsConnection *candidate;
+	guint64 best_timestamp = 0;
 	GHashTableIter iter;
-	guint num_available;
-	NMConnection *connection = NULL;
-	GPtrArray *array = NULL;
 
-	num_available = g_hash_table_size (priv->available_connections);
-	if (num_available > 0) {
-		array = g_ptr_array_sized_new (num_available);
-		g_hash_table_iter_init (&iter, priv->available_connections);
-		while (g_hash_table_iter_next (&iter, (gpointer) &connection, NULL)) {
-			/* If a specific object is given, only include connections that are
-			 * compatible with it.
-			 */
-			if (   !specific_object /* << Optimization: we know that the connection is available without @specific_object.  */
-			    || nm_device_check_connection_available (self, connection, _NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST, specific_object))
-				g_ptr_array_add (array, connection);
+	g_hash_table_iter_init (&iter, priv->available_connections);
+	while (g_hash_table_iter_next (&iter, (gpointer) &candidate, NULL)) {
+		guint64 candidate_timestamp = 0;
+
+		/* If a specific object is given, only include connections that are
+		 * compatible with it.
+		 */
+		if (    specific_object /* << Optimization: we know that the connection is available without @specific_object.  */
+		    && !nm_device_check_connection_available (self,
+		                                              NM_CONNECTION (candidate),
+		                                              _NM_DEVICE_CHECK_CON_AVAILABLE_FOR_USER_REQUEST,
+		                                              specific_object))
+			continue;
+
+		nm_settings_connection_get_timestamp (candidate, &candidate_timestamp);
+		if (!connection || (candidate_timestamp > best_timestamp)) {
+			connection = candidate;
+			best_timestamp = candidate_timestamp;
 		}
 	}
-	return array;
+
+	if (!connection) {
+		g_set_error (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_UNKNOWN_CONNECTION,
+		             "The device '%s' has no connections available for activation.",
+		              nm_device_get_iface (self));
+	}
+
+	return connection;
 }
 
 static void
@@ -9940,14 +9956,14 @@ _cleanup_generic_post (NMDevice *self, CleanupType cleanup_type)
 	if (cleanup_type == CLEANUP_TYPE_DECONFIGURE) {
 		priv->default_route.v4_is_assumed = FALSE;
 		priv->default_route.v6_is_assumed = FALSE;
-		nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
-		nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+		nm_default_route_manager_ip4_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
+		nm_default_route_manager_ip6_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
 	}
 
 	priv->default_route.v4_is_assumed = TRUE;
 	priv->default_route.v6_is_assumed = TRUE;
-	nm_default_route_manager_ip4_update_default_route (nm_netns_controller_get_default_route_manager (), self);
-	nm_default_route_manager_ip6_update_default_route (nm_netns_controller_get_default_route_manager (), self);
+	nm_default_route_manager_ip4_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
+	nm_default_route_manager_ip6_update_default_route (nm_netns_get_default_route_manager (priv->netns), self);
 
 	priv->v4_commit_first_time = TRUE;
 	priv->v6_commit_first_time = TRUE;
@@ -10044,7 +10060,7 @@ nm_device_cleanup (NMDevice *self, NMDeviceStateReason reason, CleanupType clean
 	/* Take out any entries in the routing table and any IP address the device had. */
 	ifindex = nm_device_get_ip_ifindex (self);
 	if (ifindex > 0) {
-		nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), ifindex);
+		nm_route_manager_route_flush (nm_netns_get_route_manager (priv->netns), ifindex);
 		nm_platform_address_flush (nm_device_get_platform(self), ifindex);
 	}
 
@@ -10394,7 +10410,8 @@ _set_state_full (NMDevice *self,
 	if (state <= NM_DEVICE_STATE_UNAVAILABLE) {
 		if (available_connections_del_all (self))
 			available_connections_notify (self);
-		_clear_queued_act_request (priv);
+		if (old_state > NM_DEVICE_STATE_UNAVAILABLE)
+			_clear_queued_act_request (priv);
 	}
 
 	/* Update the available connections list when a device first becomes available */

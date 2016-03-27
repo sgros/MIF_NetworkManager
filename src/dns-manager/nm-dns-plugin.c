@@ -25,12 +25,12 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include "nm-core-internal.h"
+
 #include "nm-dns-plugin.h"
 #include "NetworkManagerUtils.h"
 
 typedef struct {
-	gboolean disposed;
-
 	GPid pid;
 	guint watch_id;
 	char *progname;
@@ -90,36 +90,60 @@ nm_dns_plugin_get_name (NMDnsPlugin *self)
 /********************************************/
 
 static void
+_clear_pidfile (NMDnsPlugin *self)
+{
+	NMDnsPluginPrivate *priv = NM_DNS_PLUGIN_GET_PRIVATE (self);
+
+	if (priv->pidfile) {
+		unlink (priv->pidfile);
+		g_free (priv->pidfile);
+		priv->pidfile = NULL;
+	}
+}
+
+static void
 kill_existing (const char *progname, const char *pidfile, const char *kill_match)
 {
-	char *contents = NULL;
 	glong pid;
-	char *proc_path = NULL;
-	char *cmdline_contents = NULL;
+	gs_free char *contents = NULL;
+	gs_free char *cmdline_contents = NULL;
+	guint64 start_time;
+	char proc_path[256];
+	gs_free_error GError *error = NULL;
 
-	if (!g_file_get_contents (pidfile, &contents, NULL, NULL))
+	if (!pidfile)
 		return;
 
-	pid = strtol (contents, NULL, 10);
-	if (pid < 1 || pid > INT_MAX)
+	if (!kill_match)
+		g_return_if_reached ();
+
+	if (!g_file_get_contents (pidfile, &contents, NULL, &error)) {
+		if (g_error_matches (error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
+			return;
+		goto out;
+	}
+
+	pid = _nm_utils_ascii_str_to_int64 (contents, 10, 2, INT_MAX, -1);
+	if (pid == -1)
 		goto out;
 
-	proc_path = g_strdup_printf ("/proc/%ld/cmdline", pid);
+	start_time = nm_utils_get_start_time_for_pid (pid, NULL, NULL);
+	if (start_time == 0)
+		goto out;
+
+	nm_sprintf_buf (proc_path, "/proc/%ld/cmdline", pid);
 	if (!g_file_get_contents (proc_path, &cmdline_contents, NULL, NULL))
 		goto out;
 
-	if (strstr (cmdline_contents, kill_match)) {
-		if (kill (pid, 0) == 0) {
-			nm_log_dbg (LOGD_DNS, "Killing stale %s child process %ld", progname, pid);
-			kill (pid, SIGKILL);
-		}
-		unlink (pidfile);
-	}
+	if (!strstr (cmdline_contents, kill_match))
+		goto out;
+
+	nm_utils_kill_process_sync (pid, start_time, SIGKILL, LOGD_DNS,
+	                            progname ?: "<dns-process>",
+	                            0, 0, 1000);
 
 out:
-	g_free (cmdline_contents);
-	g_free (proc_path);
-	g_free (contents);
+	unlink (pidfile);
 }
 
 static void
@@ -132,6 +156,8 @@ watch_cb (GPid pid, gint status, gpointer user_data)
 	priv->watch_id = 0;
 	g_free (priv->progname);
 	priv->progname = NULL;
+
+	_clear_pidfile (self);
 
 	g_signal_emit (self, signals[CHILD_QUIT], 0, status);
 }
@@ -153,13 +179,11 @@ nm_dns_plugin_child_spawn (NMDnsPlugin *self,
 	g_free (priv->progname);
 	priv->progname = g_path_get_basename (argv[0]);
 
-	if (pidfile) {
-		g_return_val_if_fail (kill_match != NULL, 0);
-		kill_existing (priv->progname, pidfile, kill_match);
+	kill_existing (priv->progname, pidfile, kill_match);
 
-		g_free (priv->pidfile);
-		priv->pidfile = g_strdup (pidfile);
-	}
+	g_warn_if_fail (priv->pidfile == NULL);
+	g_clear_pointer (&priv->pidfile, g_free);
+	priv->pidfile = g_strdup (pidfile);
 
 	nm_log_info (LOGD_DNS, "DNS: starting %s...", priv->progname);
 	cmdline = g_strjoinv (" ", (char **) argv);
@@ -197,11 +221,7 @@ nm_dns_plugin_child_kill (NMDnsPlugin *self)
 		priv->progname = NULL;
 	}
 
-	if (priv->pidfile) {
-		unlink (priv->pidfile);
-		g_free (priv->pidfile);
-		priv->pidfile = NULL;
-	}
+	_clear_pidfile (self);
 
 	return TRUE;
 }
@@ -217,13 +237,8 @@ static void
 dispose (GObject *object)
 {
 	NMDnsPlugin *self = NM_DNS_PLUGIN (object);
-	NMDnsPluginPrivate *priv = NM_DNS_PLUGIN_GET_PRIVATE (self);
 
-	if (!priv->disposed) {
-		priv->disposed = TRUE;
-
-		nm_dns_plugin_child_kill (self);
-	}
+	nm_dns_plugin_child_kill (self);
 
 	G_OBJECT_CLASS (nm_dns_plugin_parent_class)->dispose (object);
 }
@@ -254,21 +269,21 @@ nm_dns_plugin_class_init (NMDnsPluginClass *plugin_class)
 
 	/* signals */
 	signals[FAILED] =
-		g_signal_new (NM_DNS_PLUGIN_FAILED,
-					  G_OBJECT_CLASS_TYPE (object_class),
-					  G_SIGNAL_RUN_FIRST,
-					  G_STRUCT_OFFSET (NMDnsPluginClass, failed),
-					  NULL, NULL,
-					  g_cclosure_marshal_VOID__VOID,
-					  G_TYPE_NONE, 0);
+	    g_signal_new (NM_DNS_PLUGIN_FAILED,
+	                  G_OBJECT_CLASS_TYPE (object_class),
+	                  G_SIGNAL_RUN_FIRST,
+	                  G_STRUCT_OFFSET (NMDnsPluginClass, failed),
+	                  NULL, NULL,
+	                  g_cclosure_marshal_VOID__VOID,
+	                  G_TYPE_NONE, 0);
 
 	signals[CHILD_QUIT] =
-		g_signal_new (NM_DNS_PLUGIN_CHILD_QUIT,
-					  G_OBJECT_CLASS_TYPE (object_class),
-					  G_SIGNAL_RUN_FIRST,
-					  G_STRUCT_OFFSET (NMDnsPluginClass, child_quit),
-					  NULL, NULL,
-					  g_cclosure_marshal_VOID__INT,
-					  G_TYPE_NONE, 1, G_TYPE_INT);
+	    g_signal_new (NM_DNS_PLUGIN_CHILD_QUIT,
+	                  G_OBJECT_CLASS_TYPE (object_class),
+	                  G_SIGNAL_RUN_FIRST,
+	                  G_STRUCT_OFFSET (NMDnsPluginClass, child_quit),
+	                  NULL, NULL,
+	                  g_cclosure_marshal_VOID__INT,
+	                  G_TYPE_NONE, 1, G_TYPE_INT);
 }
 

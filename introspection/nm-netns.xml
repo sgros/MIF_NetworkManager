@@ -89,6 +89,17 @@
       </arg>
     </method>
 
+    <method name="DeactivateConnection">
+      <annotation name="org.gtk.GDBus.DocString" value="
+        Deactivate an active connection.
+      " />
+      <arg name="active_connection" type="o" direction="in">
+        <annotation name="org.gtk.GDBus.DocString" value="
+          The currently active connection to deactivate.
+        " />
+      </arg>
+    </method>
+
     <property name="Name" type="s" access="read">
       <tp:docstring>
       Name of the network namespace, as created in directory /var/run/netns.

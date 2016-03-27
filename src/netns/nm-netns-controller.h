@@ -63,10 +63,6 @@ NMNetnsController * nm_netns_controller_get (void);
 
 void nm_netns_controller_stop (NMNetnsController *self);
 
-void nm_netns_controller_activate_root_netns (void);
-void nm_netns_controller_activate_netns (NMNetns *netns);
-
-NMNetns * nm_netns_controller_get_active_netns (void);
 NMNetns * nm_netns_controller_get_root_netns (void);
 
 NMNetns * nm_netns_controller_find_netns_by_path (const char *netns_path);
@@ -79,11 +75,7 @@ NMNetns * nm_netns_controller_new_netns (const char *netns_name);
 
 void nm_netns_controller_remove_netns (NMNetnsController *self, NMNetns *netns);
 
-NMPlatform * nm_netns_controller_get_active_platform (void);
 NMPlatform * nm_netns_controller_get_root_platform (NMNetnsController *self);
-
-NMDefaultRouteManager *nm_netns_controller_get_default_route_manager (void);
-NMRouteManager *nm_netns_controller_get_route_manager (void);
 
 NMNetnsController *nm_netns_controller_new (void);
 

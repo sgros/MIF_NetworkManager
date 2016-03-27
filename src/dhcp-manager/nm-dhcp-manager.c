@@ -113,7 +113,7 @@ find_client_desc (const char *name, GType gtype)
 }
 
 static GType
-is_client_enabled (const char *name, GError **error)
+is_client_enabled (const char *name)
 {
 	ClientDesc *desc;
 
@@ -121,9 +121,6 @@ is_client_enabled (const char *name, GError **error)
 	if (desc && (!desc->get_path_func || desc->get_path_func()))
 		return desc->gtype;
 
-	g_set_error (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_FAILED,
-	             _("'%s' support not found or not enabled."),
-	             name);
 	return G_TYPE_INVALID;
 }
 
@@ -151,28 +148,6 @@ get_client_for_ifindex (NMDhcpManager *manager, int ifindex, gboolean ip6)
 	}
 
 	return NULL;
-}
-
-static GType
-get_client_type (const char *client, GError **error)
-{
-	GType client_gtype;
-
-	if (client)
-		client_gtype = is_client_enabled (client, error);
-	else {
-		/* Fallbacks */
-		client_gtype = is_client_enabled ("dhclient", NULL);
-		if (client_gtype == G_TYPE_INVALID)
-			client_gtype = is_client_enabled ("dhcpcd", NULL);
-		if (client_gtype == G_TYPE_INVALID)
-			client_gtype = is_client_enabled ("internal", NULL);
-		if (client_gtype == G_TYPE_INVALID) {
-			g_set_error_literal (error, NM_MANAGER_ERROR, NM_MANAGER_ERROR_FAILED,
-				                 _("no usable DHCP client could be found."));
-		}
-	}
-	return client_gtype;
 }
 
 static void client_state_changed (NMDhcpClient *client,
@@ -237,7 +212,8 @@ client_start (NMDhcpManager *self,
 	priv = NM_DHCP_MANAGER_GET_PRIVATE (self);
 
 	/* Ensure we have a usable DHCP client */
-	g_return_val_if_fail (priv->client_type != 0, NULL);
+	if (priv->client_type == G_TYPE_INVALID)
+		return NULL;
 
 	/* Kill any old client instance */
 	client = get_client_for_ifindex (self, ifindex, ipv6);
@@ -362,6 +338,7 @@ nm_dhcp_manager_get_lease_ip_configs (NMDhcpManager *self,
                                       gboolean ipv6,
                                       guint32 default_route_metric)
 {
+	NMDhcpManagerPrivate *priv;
 	ClientDesc *desc;
 
 	g_return_val_if_fail (NM_IS_DHCP_MANAGER (self), NULL);
@@ -369,7 +346,11 @@ nm_dhcp_manager_get_lease_ip_configs (NMDhcpManager *self,
 	g_return_val_if_fail (ifindex >= -1, NULL);
 	g_return_val_if_fail (uuid != NULL, NULL);
 
-	desc = find_client_desc (NULL, NM_DHCP_MANAGER_GET_PRIVATE (self)->client_type);
+	priv = NM_DHCP_MANAGER_GET_PRIVATE (self);
+	if (priv->client_type == G_TYPE_INVALID)
+		return NULL;
+
+	desc = find_client_desc (NULL, priv->client_type);
 	if (desc && desc->get_lease_configs_func)
 		return desc->get_lease_configs_func (iface, ifindex, uuid, ipv6, default_route_metric);
 	return NULL;
@@ -385,8 +366,8 @@ nm_dhcp_manager_init (NMDhcpManager *self)
 	NMDhcpManagerPrivate *priv = NM_DHCP_MANAGER_GET_PRIVATE (self);
 	NMConfig *config = nm_config_get ();
 	const char *client;
-	GError *error = NULL;
 	GSList *iter;
+	GType type = G_TYPE_INVALID;
 
 	for (iter = client_descs; iter; iter = iter->next) {
 		ClientDesc *desc = iter->data;
@@ -403,16 +384,26 @@ nm_dhcp_manager_init (NMDhcpManager *self)
 		client = "internal";
 	}
 
-	priv->client_type = get_client_type (client, &error);
-	if (priv->client_type == G_TYPE_INVALID) {
-		nm_log_warn (LOGD_DHCP, "No usable DHCP client found (%s)! DHCP configurations will fail.",
-		             error->message);
-	} else {
-		nm_log_dbg (LOGD_DHCP, "Using DHCP client '%s'", find_client_desc (NULL, priv->client_type)->name);
+	if (client)
+		type = is_client_enabled (client);
 
+	if (type == G_TYPE_INVALID) {
+		if (client)
+			nm_log_warn (LOGD_DHCP, "DHCP client '%s' not available", client);
+
+		type = is_client_enabled ("dhclient");
+		if (type == G_TYPE_INVALID)
+			type = is_client_enabled ("dhcpcd");
+		if (type == G_TYPE_INVALID)
+			type = is_client_enabled ("internal");
 	}
-	g_clear_error (&error);
 
+	if (type == G_TYPE_INVALID)
+		nm_log_warn (LOGD_DHCP, "No usable DHCP client found! DHCP configurations will fail");
+	else
+		nm_log_info (LOGD_DHCP, "Using DHCP client '%s'", find_client_desc (NULL, type)->name);
+
+	priv->client_type = type;
 	priv->clients = g_hash_table_new_full (g_direct_hash, g_direct_equal,
 	                                       NULL,
 	                                       (GDestroyNotify) g_object_unref);

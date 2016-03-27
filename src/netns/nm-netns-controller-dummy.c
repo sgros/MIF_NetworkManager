@@ -73,30 +73,8 @@ NM_DEFINE_SINGLETON_INSTANCE (NMNetnsController);
 
 NM_DEFINE_SINGLETON_REGISTER (NMNetnsController);
 
-void nm_netns_controller_activate_root_netns(void)
-{
-}
-
-void nm_netns_controller_activate_netns(NMNetns *netns)
-{
-}
-
-NMRouteManager *
-nm_netns_controller_get_route_manager(void)
-{
-	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
-
-	return nm_netns_get_route_manager(priv->netns);
-}
-
 NMNetns *
-nm_netns_controller_get_root_netns(void)
-{
-	return nm_netns_controller_get_active_netns();
-}
-
-NMNetns *
-nm_netns_controller_get_active_netns(void)
+nm_netns_controller_get_root_netns (void)
 {
 	NMNetnsControllerPrivate *priv = NM_NETNS_CONTROLLER_GET_PRIVATE (singleton_instance);
 

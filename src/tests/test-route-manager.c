@@ -27,6 +27,7 @@
 
 #include "nm-platform.h"
 #include "nm-route-manager.h"
+#include "nm-netns.h"
 #include "nm-netns-controller.h"
 
 #include "nm-test-utils.h"
@@ -62,7 +63,7 @@ setup_dev0_ip4 (int ifindex, guint mss_of_first_route, guint32 metric_of_second_
 	route.mss = 0;
 	g_array_append_val (routes, route);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -109,7 +110,7 @@ setup_dev1_ip4 (int ifindex)
 	route.metric = 22;
 	g_array_append_val (routes, route);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -136,7 +137,7 @@ update_dev0_ip4 (int ifindex)
 	route.metric = 21;
 	g_array_append_val (routes, route);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -348,7 +349,7 @@ test_ip4 (test_fixture *fixture, gconstpointer user_data)
 	nmtst_platform_ip4_routes_equal ((NMPlatformIP4Route *) routes->data, state2, routes->len, TRUE);
 	g_array_free (routes, TRUE);
 
-	nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), fixture->ifindex0);
+	nm_route_manager_route_flush (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0);
 
 	/* 6.6.6.0/24 is now on dev1
 	 * 6.6.6.0/24 is also still on dev1 with bumped metric 21.
@@ -360,7 +361,7 @@ test_ip4 (test_fixture *fixture, gconstpointer user_data)
 	nmtst_platform_ip4_routes_equal ((NMPlatformIP4Route *) routes->data, state3, routes->len, TRUE);
 	g_array_free (routes, TRUE);
 
-	nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), fixture->ifindex1);
+	nm_route_manager_route_flush (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex1);
 
 	/* No routes left. */
 	routes = ip4_routes (fixture);
@@ -411,7 +412,7 @@ setup_dev0_ip6 (int ifindex)
 	                                       0);
 	g_array_append_val (routes, *route);
 
-	nm_route_manager_ip6_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip6_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -469,7 +470,7 @@ setup_dev1_ip6 (int ifindex)
 	                                       0);
 	g_array_append_val (routes, *route);
 
-	nm_route_manager_ip6_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip6_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -516,7 +517,7 @@ update_dev0_ip6 (int ifindex)
 	                                       0);
 	g_array_append_val (routes, *route);
 
-	nm_route_manager_ip6_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, TRUE);
+	nm_route_manager_ip6_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), ifindex, routes, TRUE, TRUE);
 	g_array_free (routes, TRUE);
 }
 
@@ -762,7 +763,7 @@ test_ip6 (test_fixture *fixture, gconstpointer user_data)
 	nmtst_platform_ip6_routes_equal ((NMPlatformIP6Route *) routes->data, state2, routes->len, TRUE);
 	g_array_free (routes, TRUE);
 
-	nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), fixture->ifindex0);
+	nm_route_manager_route_flush (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0);
 
 	/* 2001:db8:abad:c0de::/64 on dev1 is still there, went away from dev0
 	 * 2001:db8:8086::/48 is now on dev1
@@ -774,7 +775,7 @@ test_ip6 (test_fixture *fixture, gconstpointer user_data)
 	nmtst_platform_ip6_routes_equal ((NMPlatformIP6Route *) routes->data, state3, routes->len, TRUE);
 	g_array_free (routes, TRUE);
 
-	nm_route_manager_route_flush (nm_netns_controller_get_route_manager (), fixture->ifindex1);
+	nm_route_manager_route_flush (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex1);
 
 	/* No routes left. */
 	routes = ip6_routes (fixture);
@@ -830,7 +831,7 @@ test_ip4_full_sync (test_fixture *fixture, gconstpointer user_data)
 	g_array_set_size (routes, 2);
 	g_array_index (routes, NMPlatformIP4Route, 0) = r01;
 	g_array_index (routes, NMPlatformIP4Route, 1) = r02;
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), fixture->ifindex0, routes, TRUE, TRUE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0, routes, TRUE, TRUE);
 
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r01);
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r02);
@@ -842,7 +843,7 @@ test_ip4_full_sync (test_fixture *fixture, gconstpointer user_data)
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r02);
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r03);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), fixture->ifindex0, routes, TRUE, FALSE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0, routes, TRUE, FALSE);
 
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r01);
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r02);
@@ -850,13 +851,13 @@ test_ip4_full_sync (test_fixture *fixture, gconstpointer user_data)
 
 	g_array_set_size (routes, 1);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), fixture->ifindex0, routes, TRUE, FALSE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0, routes, TRUE, FALSE);
 
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r01);
 	_assert_route_check (vtable, FALSE, (const NMPlatformIPXRoute *) &r02);
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r03);
 
-	nm_route_manager_ip4_route_sync (nm_netns_controller_get_route_manager (), fixture->ifindex0, routes, TRUE, TRUE);
+	nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (nm_netns_controller_get_root_netns ()), fixture->ifindex0, routes, TRUE, TRUE);
 
 	_assert_route_check (vtable, TRUE,  (const NMPlatformIPXRoute *) &r01);
 	_assert_route_check (vtable, FALSE, (const NMPlatformIPXRoute *) &r02);

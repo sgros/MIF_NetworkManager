@@ -626,9 +626,7 @@ typedef struct {
 	gboolean (*check_support_kernel_extended_ifa_flags) (NMPlatform *);
 	gboolean (*check_support_user_ipv6ll) (NMPlatform *);
 
-	int (*netns_create) (NMPlatform *platform, const char *name, gboolean isroot);
-	void (*netns_destroy) (NMPlatform *platform, const char *name);
-	gboolean (*netns_activate) (NMPlatform *platform, int netns_id);
+	void (*stop) (NMPlatform *);
 } NMPlatformClass;
 
 /* NMPlatform signals
@@ -681,6 +679,8 @@ _nm_platform_uint8_inv (guint8 scope)
 
 NMPNetns *nm_platform_netns_get (NMPlatform *self);
 gboolean nm_platform_netns_push (NMPlatform *platform, NMPNetns **netns);
+
+void nm_platform_netns_destroy (NMPlatform *platform);
 
 const char *nm_link_type_to_string (NMLinkType link_type);
 
@@ -938,10 +938,6 @@ int nm_platform_ip6_route_cmp (const NMPlatformIP6Route *a, const NMPlatformIP6R
 gboolean nm_platform_check_support_kernel_extended_ifa_flags (NMPlatform *self);
 gboolean nm_platform_check_support_user_ipv6ll (NMPlatform *self);
 
-int nm_platform_netns_create(NMPlatform *self, const char *name, gboolean isroot);
-void nm_platform_netns_destroy(NMPlatform *self, const char *name);
-gboolean nm_platform_netns_activate(NMPlatform *self, int netns_id);
-
 const char *nm_platform_link_flags2str (unsigned flags, char *buf, gsize len);
 const char *nm_platform_link_inet6_addrgenmode2str (guint8 mode, char *buf, gsize len);
 const char *nm_platform_addr_flags2str (unsigned flags, char *buf, gsize len);
@@ -951,5 +947,7 @@ int nm_platform_ip_address_cmp_expiry (const NMPlatformIPAddress *a, const NMPla
 
 gboolean nm_platform_ethtool_set_wake_on_lan (NMPlatform *self, const char *ifname, NMSettingWiredWakeOnLan wol, const char *wol_password);
 gboolean nm_platform_ethtool_get_link_speed (NMPlatform *self, const char *ifname, guint32 *out_speed);
+
+void nm_platform_stop (NMPlatform *);
 
 #endif /* __NETWORKMANAGER_PLATFORM_H__ */

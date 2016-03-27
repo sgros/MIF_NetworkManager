@@ -33,7 +33,7 @@
 #include "nm-route-manager.h"
 #include "nm-core-internal.h"
 #include "nm-macros-internal.h"
-#include "nm-netns-controller.h"
+#include "nm-netns.h"
 
 #include "nmdbus-ip4-config.h"
 
@@ -263,7 +263,7 @@ nm_ip4_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf
 	gboolean old_has_gateway = FALSE;
 
 	/* Slaves have no IP configuration */
-	if (nm_platform_link_get_master (nm_netns_get_platform(netns), ifindex) > 0)
+	if (nm_platform_link_get_master (nm_netns_get_platform (netns), ifindex) > 0)
 		return NULL;
 
 	config = nm_ip4_config_new (ifindex);
@@ -272,8 +272,8 @@ nm_ip4_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf
 	g_array_unref (priv->addresses);
 	g_array_unref (priv->routes);
 
-	priv->addresses = nm_platform_ip4_address_get_all (nm_netns_get_platform(netns), ifindex);
-	priv->routes = nm_platform_ip4_route_get_all (nm_netns_get_platform(netns), ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
+	priv->addresses = nm_platform_ip4_address_get_all (nm_netns_get_platform (netns), ifindex);
+	priv->routes = nm_platform_ip4_route_get_all (nm_netns_get_platform (netns), ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
 
 	/* Extract gateway from default route */
 	old_gateway = priv->gateway;
@@ -413,7 +413,8 @@ nm_ip4_config_commit (const NMIP4Config *config, NMNetns *netns, int ifindex, gb
 
 		nm_route_manager_ip4_route_register_device_route_purge_list (nm_netns_get_route_manager (netns), device_route_purge_list);
 
-		success = nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (netns), ifindex, routes, default_route_metric < 0, routes_full_sync);
+		success = nm_route_manager_ip4_route_sync (nm_netns_get_route_manager (netns),
+		                                           ifindex, routes, default_route_metric < 0, routes_full_sync);
 		g_array_unref (routes);
 		if (!success)
 			return FALSE;

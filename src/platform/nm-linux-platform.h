@@ -50,13 +50,6 @@ GType nm_linux_platform_get_type (void);
 
 void nm_linux_platform_setup (void);
 
-/*
- * Added so that each network namespace has a separate copy. This is
- * necessary since each namespace heas its own set of sockets (and
- * thus all the connections!).
- */
 NMPlatform *nm_linux_platform_new (void);
-
-void _nm_linux_platform_sysctl_clear_cache (void);
 
 #endif /* __NETWORKMANAGER_LINUX_PLATFORM_H__ */

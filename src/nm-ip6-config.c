@@ -29,10 +29,10 @@
 #include "nm-macros-internal.h"
 #include "nm-utils.h"
 #include "nm-platform.h"
-#include "nm-netns-controller.h"
 #include "nm-route-manager.h"
 #include "nm-core-internal.h"
 #include "NetworkManagerUtils.h"
+#include "nm-netns.h"
 
 #include "nmdbus-ip6-config.h"
 
@@ -326,7 +326,8 @@ nm_ip6_config_capture (NMNetns *netns, int ifindex, gboolean capture_resolv_conf
 	g_array_unref (priv->routes);
 
 	priv->addresses = nm_platform_ip6_address_get_all (nm_netns_get_platform (netns), ifindex);
-	priv->routes = nm_platform_ip6_route_get_all (nm_netns_get_platform (netns), ifindex, NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
+	priv->routes = nm_platform_ip6_route_get_all (nm_netns_get_platform (netns), ifindex,
+	                                              NM_PLATFORM_GET_ROUTE_FLAGS_WITH_DEFAULT | NM_PLATFORM_GET_ROUTE_FLAGS_WITH_NON_DEFAULT);
 
 	/* Extract gateway from default route */
 	old_gateway = priv->gateway;
@@ -421,7 +422,7 @@ nm_ip6_config_commit (const NMIP6Config *config, NMNetns *netns, int ifindex, gb
 			g_array_append_vals (routes, route, 1);
 		}
 
-		success = nm_route_manager_ip6_route_sync (nm_netns_controller_get_route_manager (), ifindex, routes, TRUE, routes_full_sync);
+		success = nm_route_manager_ip6_route_sync (nm_netns_get_route_manager (netns), ifindex, routes, TRUE, routes_full_sync);
 		g_array_unref (routes);
 	}
 
