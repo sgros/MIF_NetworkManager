@@ -1116,7 +1116,14 @@ nm_netns_new (const char *netns_name)
 const GSList *
 nm_netns_get_devices (NMNetns *netns)
 {
+	NMNetnsPrivate *priv;
+
 	g_return_val_if_fail (NM_IS_NETNS (netns), NULL);
+
+	priv = NM_NETNS_GET_PRIVATE (netns);
+
+	if (priv->isroot)
+		return nm_manager_get_devices (nm_manager_get ());
 
 	return NM_NETNS_GET_PRIVATE (netns)->devices;
 }

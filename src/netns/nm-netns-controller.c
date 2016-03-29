@@ -319,7 +319,7 @@ nm_netns_controller_setup (void)
 {
         g_return_val_if_fail (!singleton_instance, FALSE);
 
-        singleton_instance = nm_netns_controller_new();
+        singleton_instance = nm_netns_controller_new ();
 
         nm_singleton_instance_register ();
 

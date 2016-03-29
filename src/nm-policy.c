@@ -1760,7 +1760,8 @@ _connect_manager_signal (NMPolicy *policy, const char *name, gpointer callback)
 	NMPolicyPrivate *priv = NM_POLICY_GET_PRIVATE (policy);
 	gulong id;
 
-	id = g_signal_connect (priv->netns, name, callback, policy);
+//	id = g_signal_connect (priv->netns, name, callback, policy);
+	id = g_signal_connect (nm_manager_get (), name, callback, policy);
 	priv->manager_ids = g_slist_prepend (priv->manager_ids, (gpointer) id);
 }
 
@@ -1787,7 +1788,7 @@ nm_policy_new (NMNetns *netns, NMSettings *settings)
 
 	policy = g_object_new (NM_TYPE_POLICY, NULL);
 	priv = NM_POLICY_GET_PRIVATE (policy);
-	priv->netns = netns;
+	priv->netns = g_object_ref (netns);
 	priv->settings = g_object_ref (settings);
 	priv->update_state_id = 0;
 
